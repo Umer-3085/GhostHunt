@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block title %}Simulations & Detection Validation — {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="page-title-group">
+        <h1 class="page-title">🧪 Safe Malware-Behavior Simulations</h1>
+        <p class="page-subtitle">Academic Detection Validation • Zero Kernel Modifications • Isolated Sandboxed Test DBs</p>
+    </div>
+    <div class="header-actions">
+        <button type="button" class="btn btn-primary" id="btn-run-all-scenarios" onclick="runSimulation('all')">
+            <span class="btn-icon">▶</span> Run All Scenarios
+        </button>
+    </div>
+</div>
+
+<div class="card info-banner">
+    <div class="banner-icon">ℹ️</div>
+    <div class="banner-content">
+        <h3>Defensive Safety & Isolation Guarantee</h3>
+        <p>
+            All simulation scenarios execute exclusively against dedicated, temporary SQLite databases and ephemeral test fixtures.
+            Simulations validate detection mechanics (cross-view discrepancies, persistence diffing, Authenticode reconciliation, and risk correlation)
+            without modifying Windows kernel structures, hooking system calls, or mutating production state.
+        </p>
+    </div>
+</div>
+
+<!-- Simulation Results Summary Card (Hidden until run) -->
+<div class="card" id="simulation-summary-card" style="display: none;">
+    <div class="card-header">
+        <h2 class="card-title">Execution Results Summary</h2>
+        <span class="badge" id="summary-status-badge">COMPLETED</span>
+    </div>
+    <div class="metric-grid">
+        <div class="metric-card">
+            <div class="metric-label">Total Executed</div>
+            <div class="metric-value" id="summary-total">0</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Passed</div>
+            <div class="metric-value text-success" id="summary-passed">0</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Failed</div>
+            <div class="metric-value text-danger" id="summary-failed">0</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Total Duration</div>
+            <div class="metric-value" id="summary-duration">0 ms</div>
+        </div>
+    </div>
+</div>
+
+<!-- Scenarios Catalog -->
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title">Simulation Scenario Catalog ({{ scenarios|length }} Scenarios Registered)</h2>
+    </div>
+    <div class="table-container">
+        <table class="data-table" id="scenarios-table">
+            <thead>
+                <tr>
+                    <th style="width: 120px;">Scenario ID</th>
+                    <th style="width: 250px;">Scenario Name</th>
+                    <th style="width: 120px;">Target Signal</th>
+                    <th>Description</th>
+                    <th style="width: 110px;">Type</th>
+                    <th style="width: 120px;">Status</th>
+                    <th style="width: 100px;">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in scenarios %}
+                <tr id="row-{{ s.scenario_id }}">
+                    <td><code>{{ s.scenario_id }}</code></td>
+                    <td><strong>{{ s.name }}</strong></td>
+                    <td><span class="signal-tag signal-{{ s.target_signal }}">{{ s.target_signal }}</span></td>
+                    <td>{{ s.description }}</td>
+                    <td>
+                        {% if s.is_synthetic %}
+                        <span class="badge badge-secondary">Synthetic</span>
+                        {% else %}
+                        <span class="badge badge-info">Live Artifact</span>
+                        {% endif %}
+                    </td>
+                    <td id="status-{{ s.scenario_id }}">
+                        <span class="badge badge-idle">Ready</span>
+                    </td>
+                    <td>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="runSimulation('{{ s.scenario_id }}')">
+                            Run
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+async function runSimulation(scenarioId) {
+    const btnAll = document.getElementById('btn-run-all-scenarios');
+    if (btnAll) btnAll.disabled = true;
+
+    // Update status badge for target
+    if (scenarioId !== 'all') {
+        const badge = document.getElementById(`status-${scenarioId}`);
+        if (badge) badge.innerHTML = '<span class="badge badge-running">Running...</span>';
+    } else {
+        document.querySelectorAll('[id^="status-"]').forEach(el => {
+            el.innerHTML = '<span class="badge badge-running">Pending...</span>';
+        });
+    }
+
+    try {
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+        const response = await fetch('/api/scenarios/run', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': csrfToken
+            },
+            body: JSON.stringify({ scenario_id: scenarioId })
+        });
+
+        if (!response.ok) {
+            throw new Error(`Execution failed with status ${response.status}`);
+        }
+
+        const data = await response.json();
+        const results = Array.isArray(data.results) ? data.results : [data.results];
+
+        let passed = 0;
+        let totalDuration = 0;
+
+        results.forEach(r => {
+            const el = document.getElementById(`status-${r.scenario_id}`);
+            if (el) {
+                if (r.passed) {
+                    el.innerHTML = `<span class="badge badge-success" title="Duration: ${r.duration_ms}ms">PASSED (${r.duration_ms}ms)</span>`;
+                    passed++;
+                } else {
+                    el.innerHTML = `<span class="badge badge-danger" title="${r.error || 'Failed'}">FAILED</span>`;
+                }
+            }
+            totalDuration += (r.duration_ms || 0);
+        });
+
+        // Show Summary Card
+        const summaryCard = document.getElementById('simulation-summary-card');
+        if (summaryCard) {
+            summaryCard.style.display = 'block';
+            document.getElementById('summary-total').innerText = results.length;
+            document.getElementById('summary-passed').innerText = passed;
+            document.getElementById('summary-failed').innerText = results.length - passed;
+            document.getElementById('summary-duration').innerText = Math.round(totalDuration) + ' ms';
+
+            const badge = document.getElementById('summary-status-badge');
+            if (badge) {
+                badge.className = passed === results.length ? 'badge badge-success' : 'badge badge-danger';
+                badge.innerText = passed === results.length ? 'ALL PASSED' : `${results.length - passed} FAILED`;
+            }
+        }
+    } catch (err) {
+        alert('Simulation execution error: ' + err.message);
+    } finally {
+        if (btnAll) btnAll.disabled = false;
+    }
+}
+</script>
+{% endblock %}

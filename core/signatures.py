@@ -878,9 +878,14 @@ def run_scan(
         proc_name = f"PID_{pid}"
         try:
             if psutil.pid_exists(pid):
-                proc_name = psutil.Process(pid).name()
+                raw_proc_name = psutil.Process(pid).name()
+                if raw_proc_name and isinstance(raw_proc_name, str) and raw_proc_name.strip():
+                    proc_name = raw_proc_name.strip()
         except Exception:
             pass
+
+        if not proc_name or not proc_name.strip():
+            proc_name = f"PID_{pid}"
 
         # 1. Enumerate loaded modules
         mod_ok, modules, mod_err = get_loaded_dlls(pid, caller=module_caller)

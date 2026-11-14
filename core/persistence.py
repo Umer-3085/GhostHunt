@@ -967,14 +967,16 @@ def evaluate_category_persistence(
 
 def _extract_display_name(value: str, fallback_key: str) -> str:
     """Extracts a concise, readable process or binary name for a persistence entry."""
+    fallback_part = (fallback_key or "").split(":")[-1].strip() or "Persistence_Item"
     if not value or value.strip() == "N/A":
-        return fallback_key.split(":")[-1]
+        return fallback_part
     # Clean quotes or command line arguments
     clean = value.strip().strip('"').strip("'")
     if " -Jack" in clean:
         clean = clean.split(" -Jack")[0]
-    first_token = clean.split()[0] if clean else fallback_key.split(":")[-1]
-    return os.path.basename(first_token) or fallback_key.split(":")[-1]
+    first_token = clean.split()[0] if clean else fallback_part
+    base = os.path.basename(first_token).strip() if first_token else ""
+    return base or fallback_part
 
 
 # ---------------------------------------------------------------------------

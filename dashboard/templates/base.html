@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <title>{% block title %}{{ app_name }} — Stealth-Malware Detection{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="dark-theme">
+    <header class="app-header">
+        <div class="header-container">
+            <div class="brand">
+                <a href="/" class="brand-link">
+                    <span class="brand-icon">🛡️</span>
+                    <span class="brand-title">{{ app_name }}</span>
+                </a>
+                <span class="version-tag">v{{ app_version }}</span>
+                <span class="defense-mode-tag">Defensive User-Mode</span>
+            </div>
+
+            <nav class="app-nav">
+                <a href="/" class="nav-link {% if request.path == '/' %}active{% endif %}">Dashboard</a>
+                <a href="/system-findings" class="nav-link {% if request.path == '/system-findings' %}active{% endif %}">System Findings</a>
+                <a href="/history" class="nav-link {% if request.path.startswith('/history') %}active{% endif %}">Scan History</a>
+                <a href="/simulations" class="nav-link {% if request.path == '/simulations' %}active{% endif %}">Simulations</a>
+            </nav>
+
+            <div class="header-actions">
+                <div class="scheduler-badge {% if scheduler_running %}running{% else %}idle{% endif %}" id="scheduler-indicator" title="In-process background scheduler status">
+                    <span class="dot"></span>
+                    <span class="label">Scheduler: {% if scheduler_running %}ACTIVE{% else %}STANDBY{% endif %}</span>
+                </div>
+                <button type="button" class="btn btn-primary" id="btn-manual-scan" onclick="triggerManualScan()">
+                    <span class="btn-icon">⚡</span> Run Scan
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Global Toast Notification Area -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <main class="main-container">
+        {% if error_title %}
+        <div class="card error-card">
+            <h2>{{ error_title }}</h2>
+            <p>{{ error_message }}</p>
+            <a href="/" class="btn btn-secondary">Return to Dashboard</a>
+        </div>
+        {% else %}
+            {% block content %}{% endblock %}
+        {% endif %}
+    </main>
+
+    <footer class="app-footer">
+        <div class="footer-container">
+            <p>{{ app_name }} v{{ app_version }} — Academic Defensive Rootkit & Stealth-Malware Detector (Single-Process 127.0.0.1)</p>
+            <p class="footer-subtext">Read-Only Forensic Analysis • Multi-Signal Correlation (Process Views + Persistence + Authenticode)</p>
+        </div>
+    </footer>
+
+    <script src="{{ url_for('static', filename='dashboard.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

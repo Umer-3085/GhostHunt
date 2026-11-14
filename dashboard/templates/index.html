@@ -1,0 +1,249 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard — {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="dashboard-view">
+
+    <!-- 1. Candidate Baseline Review Banner (when category in CANDIDATE_REVIEW) -->
+    {% if has_candidate_review %}
+    <div class="banner banner-warning">
+        <div class="banner-icon">⚠️</div>
+        <div class="banner-content">
+            <h3>Candidate Baseline Review Required</h3>
+            <p>
+                First-time persistence enumeration captured a baseline inventory in <code>CANDIDATE_REVIEW</code>.
+                Review candidates before establishing reference trust. Deviation detection is suppressed until explicitly accepted.
+            </p>
+            <div class="banner-meta">
+                {% for cat, meta in baseline_meta.items() %}
+                    {% if meta.state == 'CANDIDATE_REVIEW' %}
+                    <span class="badge badge-candidate">
+                        <strong>{{ cat|upper }}:</strong> {{ meta.candidate_entry_count }} candidate entries awaiting review
+                    </span>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+        <div class="banner-actions">
+            <button type="button" class="btn btn-success" onclick="acceptBaseline()">
+                ✓ Accept Baseline
+            </button>
+            <button type="button" class="btn btn-danger" onclick="confirmResetBaseline()">
+                ↺ Reset All
+            </button>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- 2. Metric Summary Cards -->
+    {% if latest_scan_id is not none %}
+    <section class="metrics-grid">
+        <div class="metric-card">
+            <div class="metric-title">Latest Completed Scan</div>
+            <div class="metric-value">#{{ scan.id }}</div>
+            <div class="metric-footer">{{ scan.scan_time or scan.completed_at }} • {{ "%.1f"|format(scan.scan_duration_ms or scan.duration_ms or 0) }} ms</div>
+        </div>
+        <div class="metric-card metric-threat">
+            <div class="metric-title">High Risk Entities</div>
+            <div class="metric-value text-danger">{{ high_count }}</div>
+            <div class="metric-footer">Score ≥ 0.60 (Multi-Signal Breach)</div>
+        </div>
+        <div class="metric-card metric-medium">
+            <div class="metric-title">Medium Risk Entities</div>
+            <div class="metric-value text-warning">{{ med_count }}</div>
+            <div class="metric-footer">0.40 ≤ Score &lt; 0.60</div>
+        </div>
+        <div class="metric-card metric-low">
+            <div class="metric-title">Low Risk / Clean</div>
+            <div class="metric-value text-info">{{ low_count }}</div>
+            <div class="metric-footer">Score &lt; 0.40</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-title">Forensic Evidence</div>
+            <div class="metric-value">{{ threat_count }} <span class="metric-subval">threats</span></div>
+            <div class="metric-footer">{{ diag_count }} operational diagnostics isolated</div>
+        </div>
+    </section>
+
+    <!-- 3. Risk-Ranked Entity Table -->
+    <section class="card table-card">
+        <div class="card-header">
+            <div class="card-header-title">
+                <h2>Correlated Entities (Scan #{{ scan.id }})</h2>
+                <span class="count-badge">{{ entities|length }} entities</span>
+            </div>
+            <div class="table-filters">
+                <button type="button" class="btn-filter active" onclick="filterEntities('ALL', this)">All</button>
+                <button type="button" class="btn-filter text-danger" onclick="filterEntities('HIGH', this)">High ({{ high_count }})</button>
+                <button type="button" class="btn-filter text-warning" onclick="filterEntities('MEDIUM', this)">Medium ({{ med_count }})</button>
+                <button type="button" class="btn-filter text-info" onclick="filterEntities('LOW', this)">Low ({{ low_count }})</button>
+            </div>
+        </div>
+
+        {% if entities %}
+        <div class="table-responsive">
+            <table class="data-table" id="entities-table">
+                <thead>
+                    <tr>
+                        <th style="width: 100px;">Severity</th>
+                        <th style="width: 90px;">Risk Score</th>
+                        <th>Process / Entity Name</th>
+                        <th style="width: 90px;">PID</th>
+                        <th>Contributing Signals</th>
+                        <th>Entity Type</th>
+                        <th style="width: 120px; text-align: right;">Forensics</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ent in entities %}
+                    <tr class="entity-row severity-{{ ent.risk_level|lower }}" data-severity="{{ ent.risk_level }}">
+                        <td>
+                            <span class="badge badge-severity badge-{{ ent.risk_level|lower }}">
+                                {{ ent.risk_level }}
+                            </span>
+                        </td>
+                        <td>
+                            <div class="score-container">
+                                <span class="score-num font-mono">{{ "%.2f"|format(ent.score) }}</span>
+                                <div class="score-bar-bg">
+                                    <div class="score-bar-fill fill-{{ ent.risk_level|lower }}" style="width: {{ (ent.score * 100)|int }}%;"></div>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="font-bold">
+                            {{ ent.process_name }}
+                        </td>
+                        <td class="font-mono">
+                            {% if ent.pid is not none %}{{ ent.pid }}{% else %}<span class="text-muted">None</span>{% endif %}
+                        </td>
+                        <td>
+                            {% if ent.signals_triggered %}
+                                {% for sig in ent.signals_triggered.split(',') %}
+                                <span class="badge badge-signal badge-signal-{{ sig }}">
+                                    {% if sig == 'process_view' %}Process View (0.40)
+                                    {% elif sig == 'persistence' %}Persistence (0.30)
+                                    {% elif sig == 'signature' %}Signature (0.30)
+                                    {% else %}{{ sig }}
+                                    {% endif %}
+                                </span>
+                                {% endfor %}
+                            {% else %}
+                                <span class="text-muted">No threat signals (Diagnostics only)</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge badge-entity-type">{{ ent.item_key.split(':')[0]|upper }}</span>
+                        </td>
+                        <td style="text-align: right;">
+                            {% if ent.pid is not none %}
+                            <a href="/process/{{ ent.pid }}?scan_id={{ scan.id }}" class="btn btn-sm btn-secondary">
+                                Evidence →
+                            </a>
+                            {% else %}
+                            <a href="/system-findings?scan_id={{ scan.id }}" class="btn btn-sm btn-secondary">
+                                Evidence →
+                            </a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state-card">
+            <p>Zero findings detected in scan #{{ scan.id }}. System is clean.</p>
+        </div>
+        {% endif %}
+    </section>
+
+    {% else %}
+    <!-- 4. Empty State: No Scans Completed Yet -->
+    <section class="card empty-state-card">
+        <div class="empty-state-icon">🛡️</div>
+        <h2>No Completed Scans Recorded</h2>
+        <p>GhostHunt has not completed a detection cycle yet. Run a scan to initiate forensic analysis.</p>
+        <button type="button" class="btn btn-primary btn-lg" onclick="triggerManualScan()">
+            ⚡ Initiate Initial Scan Cycle
+        </button>
+    </section>
+    {% endif %}
+
+    <!-- 5. Persistence Baseline Lifecycle Management Panel -->
+    <section class="card baseline-card">
+        <div class="card-header">
+            <div class="card-header-title">
+                <h2>Persistence Reference Baselines</h2>
+                <span class="badge badge-secondary">Fixed Reference Model</span>
+            </div>
+            <div class="card-header-actions">
+                <button type="button" class="btn btn-sm btn-danger" onclick="confirmResetBaseline()">
+                    ↺ Reset Baselines
+                </button>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Category</th>
+                        <th>Lifecycle State</th>
+                        <th>Candidate Entries</th>
+                        <th>Accepted Reference Entries</th>
+                        <th>Last Enumeration / Update</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for cat, meta in baseline_meta.items() %}
+                    <tr>
+                        <td class="font-bold">{{ cat|upper }}</td>
+                        <td>
+                            <span class="badge badge-state-{{ meta.state|lower }}">
+                                {{ meta.state }}
+                            </span>
+                        </td>
+                        <td class="font-mono">{{ meta.candidate_entry_count }}</td>
+                        <td class="font-mono">{{ meta.accepted_entry_count }}</td>
+                        <td class="text-muted">{{ meta.last_updated }}</td>
+                        <td>
+                            {% if meta.state == 'CANDIDATE_REVIEW' %}
+                            <button type="button" class="btn btn-sm btn-success" onclick="acceptBaseline('{{ cat }}')">
+                                Accept {{ cat }}
+                            </button>
+                            {% elif meta.state == 'ACCEPTED_TRUSTED' %}
+                            <span class="text-success font-bold">✓ Active Reference</span>
+                            {% else %}
+                            <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+
+<!-- Confirmation Modal for Baseline Reset -->
+<div id="reset-modal" class="modal-overlay hidden">
+    <div class="modal-dialog">
+        <div class="modal-header">
+            <h3>⚠️ Confirm Persistence Baseline Reset</h3>
+        </div>
+        <div class="modal-body">
+            <p>Are you sure you want to reset all persistence reference baselines?</p>
+            <p class="text-danger font-bold">
+                This will wipe candidate and accepted baseline records, resetting states to NOT_INITIALIZED.
+                The next scan will re-capture clean candidate entries.
+            </p>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeResetModal()">Cancel</button>
+            <button type="button" class="btn btn-danger" onclick="executeResetBaseline()">Confirm Reset</button>
+        </div>
+    </div>
+</div>
+{% endblock %}

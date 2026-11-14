@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block title %}
+{% if is_system %}System Findings{% else %}Forensic Details — PID {{ pid }}{% endif %} — {{ app_name }}
+{% endblock %}
+
+{% block content %}
+<div class="detail-view">
+    <div class="detail-header">
+        <a href="/" class="btn btn-secondary btn-sm">← Back to Dashboard</a>
+        <div class="header-titles">
+            {% if is_system %}
+            <h1>System Persistence Findings (Scan #{{ scan_id }})</h1>
+            <p class="subtitle">Dormant persistence entities (registry autoruns, scheduled tasks, Windows services) lacking active PIDs.</p>
+            {% else %}
+            <h1>Process Forensic Evidence: <span class="text-accent">{{ entity.process_name if entity else 'PID ' ~ pid }}</span></h1>
+            <p class="subtitle">Process ID: <code>{{ pid }}</code> • Scan Cycle: <code>#{{ scan_id }}</code></p>
+            {% endif %}
+        </div>
+        {% if entity %}
+        <div class="entity-score-badge">
+            <span class="badge badge-severity badge-{{ entity.risk_level|lower }}">
+                {{ entity.risk_level }} (Score: {{ "%.2f"|format(entity.score) }})
+            </span>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- 1. Threat Evidence Section (score_eligible == 1) -->
+    <section class="card evidence-card">
+        <div class="card-header">
+            <div class="card-header-title">
+                <h2>Threat Evidence ({{ threats|length }})</h2>
+                <span class="badge badge-threat">Contributes to Risk Score</span>
+            </div>
+        </div>
+
+        {% if threats %}
+        <div class="findings-list">
+            {% for t in threats %}
+            <div class="finding-item finding-threat">
+                <div class="finding-header">
+                    <span class="badge badge-signal badge-signal-{{ t.signal }}">
+                        {{ t.signal|upper }}
+                    </span>
+                    <span class="badge badge-severity badge-{{ t.severity|lower }}">
+                        {{ t.severity|upper }}
+                    </span>
+                    <span class="finding-timestamp text-muted">{{ t.timestamp }}</span>
+                </div>
+                <div class="finding-body">
+                    <div class="finding-evidence-text">
+                        {{ t.evidence }}
+                    </div>
+                    {% if t.metadata %}
+                    <details class="finding-metadata-details">
+                        <summary>View Technical Forensic Metadata</summary>
+                        <pre class="metadata-code">{{ t.metadata }}</pre>
+                    </details>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state-card">
+            <p>No confirmed threat signals detected for this entity.</p>
+        </div>
+        {% endif %}
+    </section>
+
+    <!-- 2. Operational Diagnostics Section (score_eligible == 0) -->
+    <section class="card diagnostic-card">
+        <div class="card-header">
+            <div class="card-header-title">
+                <h2>Operational Diagnostics ({{ diagnostics|length }})</h2>
+                <span class="badge badge-diagnostic">Score Eligible: 0.0 (Isolated)</span>
+            </div>
+        </div>
+        <div class="card-description">
+            <p>
+                Operational diagnostics capture source access denials, locked files, or enumeration timeouts.
+                They are retained for operator auditing but <strong>never contribute to risk scores</strong>.
+            </p>
+        </div>
+
+        {% if diagnostics %}
+        <div class="findings-list">
+            {% for d in diagnostics %}
+            <div class="finding-item finding-diagnostic">
+                <div class="finding-header">
+                    <span class="badge badge-secondary">{{ d.signal|upper }}</span>
+                    <span class="badge badge-info">DIAGNOSTIC</span>
+                    <span class="finding-timestamp text-muted">{{ d.timestamp }}</span>
+                </div>
+                <div class="finding-body">
+                    <div class="finding-evidence-text font-mono">
+                        {{ d.evidence }}
+                    </div>
+                    {% if d.metadata %}
+                    <details class="finding-metadata-details">
+                        <summary>Technical Details</summary>
+                        <pre class="metadata-code">{{ d.metadata }}</pre>
+                    </details>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state-card">
+            <p>Zero operational diagnostics recorded for this entity.</p>
+        </div>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}

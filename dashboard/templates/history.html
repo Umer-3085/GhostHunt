@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block title %}Scan History — {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="history-view">
+    <div class="view-header">
+        <h1>Historical Scan Audit Log</h1>
+        <p class="subtitle">Immutable audit trail of all automated and manual scan cycles.</p>
+    </div>
+
+    <!-- If a specific historical scan was selected for drill-down -->
+    {% if selected_scan %}
+    <section class="card selected-scan-card">
+        <div class="card-header">
+            <div class="card-header-title">
+                <h2>Scan Snapshot #{{ selected_scan.id }}</h2>
+                <span class="badge badge-state-{{ selected_scan.status|lower }}">
+                    {{ selected_scan.status }}
+                </span>
+            </div>
+            <a href="/history" class="btn btn-sm btn-secondary">Close Snapshot</a>
+        </div>
+
+        <div class="snapshot-details-grid">
+            <div><strong>Scan Time:</strong> {{ selected_scan.scan_time or selected_scan.started_at }}</div>
+            <div><strong>Status:</strong> {{ selected_scan.status }}</div>
+            <div><strong>Duration:</strong> {{ "%.1f"|format(selected_scan.scan_duration_ms or selected_scan.duration_ms or 0) }} ms</div>
+            <div><strong>Total Findings:</strong> {{ selected_scan.total_findings }}</div>
+            <div><strong>High Risk Count:</strong> {{ selected_scan.high_risk_count }}</div>
+            {% if selected_scan.error_message %}
+            <div class="text-danger full-width"><strong>Failure Reason:</strong> {{ selected_scan.error_message }}</div>
+            {% endif %}
+        </div>
+
+        {% if selected_entities %}
+        <div class="table-responsive" style="margin-top: 1.5rem;">
+            <h3>Correlated Entities in Snapshot #{{ selected_scan.id }}</h3>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Severity</th>
+                        <th>Score</th>
+                        <th>Entity Name</th>
+                        <th>PID</th>
+                        <th>Signals Triggered</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ent in selected_entities %}
+                    <tr>
+                        <td><span class="badge badge-severity badge-{{ ent.risk_level|lower }}">{{ ent.risk_level }}</span></td>
+                        <td class="font-mono">{{ "%.2f"|format(ent.score) }}</td>
+                        <td class="font-bold">{{ ent.process_name }}</td>
+                        <td class="font-mono">{{ ent.pid if ent.pid is not none else 'None' }}</td>
+                        <td>{{ ent.signals_triggered or 'None' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </section>
+    {% endif %}
+
+    <!-- All historical scans table -->
+    <section class="card">
+        <div class="card-header">
+            <div class="card-header-title">
+                <h2>All Historical Execution Cycles</h2>
+                <span class="count-badge">{{ history|length }} scans</span>
+            </div>
+        </div>
+
+        {% if history %}
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th style="width: 80px;">Scan ID</th>
+                        <th style="width: 120px;">Status</th>
+                        <th>Started At</th>
+                        <th>Completed At</th>
+                        <th>Duration</th>
+                        <th>Findings</th>
+                        <th>High Risk</th>
+                        <th style="text-align: right;">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in history %}
+                    <tr class="history-row {% if selected_scan and selected_scan.id == s.id %}selected{% endif %}">
+                        <td class="font-mono font-bold">#{{ s.id }}</td>
+                        <td>
+                            <span class="badge badge-state-{{ s.status|lower }}">
+                                {{ s.status }}
+                            </span>
+                        </td>
+                        <td class="text-muted">{{ s.scan_time or s.started_at }}</td>
+                        <td class="text-muted">{{ s.completed_at or '—' }}</td>
+                        <td class="font-mono">{{ "%.1f"|format(s.scan_duration_ms or s.duration_ms or 0) }} ms</td>
+                        <td class="font-mono">{{ s.total_findings }}</td>
+                        <td class="font-mono {% if s.high_risk_count > 0 %}text-danger font-bold{% endif %}">{{ s.high_risk_count }}</td>
+                        <td style="text-align: right;">
+                            <a href="/history/{{ s.id }}" class="btn btn-sm btn-secondary">
+                                View Snapshot
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state-card">
+            <p>No historical scans found in database.</p>
+        </div>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}

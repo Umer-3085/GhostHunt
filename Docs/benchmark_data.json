@@ -1,0 +1,181 @@
+{
+  "host_specifications": {
+    "product_name": "Windows 10 Home",
+    "display_version": "26H2",
+    "os_name": "Windows",
+    "os_release": "10",
+    "os_version": "10.0.26300",
+    "ubr": 9974,
+    "os_platform": "Windows-10-10.0.26300-SP0",
+    "architecture": "AMD64",
+    "cpu_count_logical": 8,
+    "cpu_count_physical": 4,
+    "total_ram_gb": 15.41,
+    "available_ram_gb": 6.11,
+    "python_version": "3.11.9",
+    "sqlite_version": "3.45.1"
+  },
+  "detector_benchmarks": {
+    "process_views_ms": {
+      "min": 538.34,
+      "max": 734.32,
+      "mean": 623.57,
+      "median": 603.71,
+      "p95": 734.32
+    },
+    "persistence_registry_ms": {
+      "min": 0.25,
+      "max": 0.41,
+      "mean": 0.33,
+      "median": 0.33,
+      "p95": 0.41
+    },
+    "persistence_tasks_ms": {
+      "min": 1667.36,
+      "max": 1945.89,
+      "mean": 1782.78,
+      "median": 1780.39,
+      "p95": 1945.89
+    },
+    "persistence_services_ms": {
+      "min": 521.96,
+      "max": 712.88,
+      "mean": 608.42,
+      "median": 602.25,
+      "p95": 712.88
+    }
+  },
+  "signature_cache_benchmarks": {
+    "sample_size": 12,
+    "cold_cache_ms": {
+      "min": 241.06,
+      "max": 288.56,
+      "mean": 249.77,
+      "median": 246.23,
+      "p95": 288.56
+    },
+    "warm_cache_ms": {
+      "min": 1.14,
+      "max": 1.8,
+      "mean": 1.31,
+      "median": 1.2,
+      "p95": 1.8
+    },
+    "speedup_factor": 190.66,
+    "warm_cache_hit_ratio_percent": 100.0
+  },
+  "scan_cycle_and_resources": {
+    "scan_cycle_duration_ms": {
+      "min": 3484.44,
+      "max": 5733.55,
+      "mean": 3814.38,
+      "median": 3573.77,
+      "p95": 5733.55
+    },
+    "cpu_percent": {
+      "min": 19.6,
+      "max": 33.4,
+      "mean": 22.89,
+      "median": 21.35,
+      "p95": 33.4
+    },
+    "rss_memory_mb": {
+      "min": 44.59,
+      "max": 45.11,
+      "mean": 44.89,
+      "median": 44.87,
+      "p95": 45.11
+    },
+    "rss_before_mb": 42.66,
+    "rss_after_mb": 44.59,
+    "rss_delta_mb": 1.93
+  },
+  "database_operations": {
+    "start_scan_ms": {
+      "min": 4.89,
+      "max": 7.85,
+      "mean": 6.2,
+      "median": 6.2,
+      "p95": 7.85
+    },
+    "insert_findings_ms": {
+      "min": 5.39,
+      "max": 6.83,
+      "mean": 6.22,
+      "median": 6.22,
+      "p95": 6.83
+    },
+    "insert_scores_ms": {
+      "min": 5.06,
+      "max": 6.69,
+      "mean": 5.95,
+      "median": 6.07,
+      "p95": 6.69
+    },
+    "complete_scan_ms": {
+      "min": 4.96,
+      "max": 6.66,
+      "mean": 5.9,
+      "median": 5.91,
+      "p95": 6.66
+    },
+    "accept_baseline_ms": {
+      "min": 5.17,
+      "max": 7.42,
+      "mean": 5.93,
+      "median": 5.62,
+      "p95": 7.42
+    },
+    "reset_baselines_ms": {
+      "min": 4.87,
+      "max": 7.72,
+      "mean": 6.25,
+      "median": 6.21,
+      "p95": 7.72
+    }
+  },
+  "rest_api_benchmarks": {
+    "/api/health": {
+      "min": 5.06,
+      "max": 8.49,
+      "mean": 5.95,
+      "median": 5.69,
+      "p95": 8.49
+    },
+    "/api/scan/latest": {
+      "min": 5.44,
+      "max": 7.67,
+      "mean": 6.04,
+      "median": 5.91,
+      "p95": 7.67
+    },
+    "/api/scores": {
+      "min": 5.1,
+      "max": 6.63,
+      "mean": 5.43,
+      "median": 5.24,
+      "p95": 6.63
+    },
+    "/api/baseline": {
+      "min": 2.72,
+      "max": 3.65,
+      "mean": 2.94,
+      "median": 2.84,
+      "p95": 3.65
+    },
+    "/api/scenarios": {
+      "min": 0.31,
+      "max": 7.57,
+      "mean": 1.07,
+      "median": 0.34,
+      "p95": 7.57
+    },
+    "/api/history": {
+      "min": 2.76,
+      "max": 3.93,
+      "mean": 3.28,
+      "median": 3.22,
+      "p95": 3.93
+    }
+  }
+}

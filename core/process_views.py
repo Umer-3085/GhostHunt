@@ -753,7 +753,8 @@ def compare_views(
         if missing_from:
             # Capture original observed names
             names_by_source = {s: views[s][pid] for s in observed_in}
-            primary_name = list(names_by_source.values())[0]
+            raw_primary = list(names_by_source.values())[0] if names_by_source else ""
+            primary_name = str(raw_primary).strip() if (raw_primary and str(raw_primary).strip()) else f"PID_{pid}"
 
             discrepancy_type = (
                 "one_source_only" if len(observed_in) == 1 else "multi_source_disagreement"
@@ -1043,7 +1044,8 @@ def run_scan(
     for diag in result["diagnostics"]:
         diag_meta = dict(diag)
         pid_val = diag.get("pid")
-        proc_name = diag.get("process_name") or "System"
+        raw_pname = diag.get("process_name")
+        proc_name = str(raw_pname).strip() if (raw_pname and str(raw_pname).strip()) else "System"
         diag_meta["signal"] = "process_view"
         diag_meta["is_diagnostic"] = True
 

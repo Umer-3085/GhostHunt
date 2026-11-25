@@ -15,3 +15,8 @@ env/
 *.tmp
 AGENTS.md
 DESIGN.md
+CLAUDE.md
+skills-lock.json
+.agents
+.claude
+.qwen

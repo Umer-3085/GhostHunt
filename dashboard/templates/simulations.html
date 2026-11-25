@@ -3,12 +3,12 @@
 {% block title %}Simulations & Detection Validation — {{ app_name }}{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div class="page-title-group">
-        <h1 class="page-title">🧪 Safe Malware-Behavior Simulations</h1>
-        <p class="page-subtitle">Academic Detection Validation • Zero Kernel Modifications • Isolated Sandboxed Test DBs</p>
+<div class="simulations-view">
+    <div class="view-header">
+        <h1 class="display-md">🧪 Safe Malware-Behavior Simulations</h1>
+        <p class="subtitle">Academic Detection Validation • Zero Kernel Modifications • Isolated Sandboxed Test DBs</p>
     </div>
-    <div class="header-actions">
+    <div class="header-actions" style="margin-top: var(--space-md);">
         <button type="button" class="btn btn-primary" id="btn-run-all-scenarios" onclick="runSimulation('all')">
             <span class="btn-icon">▶</span> Run All Scenarios
         </button>
@@ -16,7 +16,7 @@
 </div>
 
 <div class="card info-banner">
-    <div class="banner-icon">ℹ️</div>
+    <div class="banner-icon">ℹ</div>
     <div class="banner-content">
         <h3>Defensive Safety & Isolation Guarantee</h3>
         <p>
@@ -58,7 +58,7 @@
     <div class="card-header">
         <h2 class="card-title">Simulation Scenario Catalog ({{ scenarios|length }} Scenarios Registered)</h2>
     </div>
-    <div class="table-container">
+    <div class="table-responsive">
         <table class="data-table" id="scenarios-table">
             <thead>
                 <tr>
@@ -73,10 +73,10 @@
             </thead>
             <tbody>
                 {% for s in scenarios %}
-                <tr id="row-{{ s.scenario_id }}">
+                <tr class="process-row" id="row-{{ s.scenario_id }}">
                     <td><code>{{ s.scenario_id }}</code></td>
                     <td><strong>{{ s.name }}</strong></td>
-                    <td><span class="signal-tag signal-{{ s.target_signal }}">{{ s.target_signal }}</span></td>
+                    <td><span class="signal-chip {{ s.target_signal|lower }}">{{ s.target_signal }}</span></td>
                     <td>{{ s.description }}</td>
                     <td>
                         {% if s.is_synthetic %}

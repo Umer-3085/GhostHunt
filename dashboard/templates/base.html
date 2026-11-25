@@ -24,7 +24,6 @@
                     </span>
                     <span class="brand-title">{{ app_name }}</span>
                 </a>
-                <span class="defense-mode-tag">Defensive User-Mode</span>
             </div>
 
             <nav class="app-nav" aria-label="Primary Navigation">
@@ -39,6 +38,7 @@
                     <span class="dot"></span>
                     <span class="label">Scheduler: {% if scheduler_running %}ACTIVE{% else %}STANDBY{% endif %}</span>
                 </div>
+                <div class="scheduler-eta" id="scheduler-eta" title="Time until next automated scan">Next scan in: —</div>
                 <button type="button" class="btn btn-secondary btn-sm" id="btn-theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme" title="Toggle theme">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="icon-sun">
                         <circle cx="12" cy="12" r="5"/>
@@ -55,7 +55,7 @@
                         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
                     </svg>
                 </button>
-                <button type="button" class="btn btn-primary" id="btn-manual-scan" onclick="triggerManualScan()">
+                <button type="button" class="btn btn-primary btn-manual-scan" id="btn-manual-scan" onclick="triggerManualScan()">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                         <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
                     </svg>
@@ -89,48 +89,53 @@
 
     <script src="{{ url_for('static', filename='dashboard.js') }}"></script>
     <script>
-    // Theme toggle
-    (function() {
+    // Theme toggle — define globally immediately (no DOMContentNeeded wait)
+    const root = document.documentElement;
+
+    function applyTheme(theme, sunIcon, moonIcon) {
+      if (theme === 'light') {
+        root.setAttribute('data-theme', 'light');
+        if (sunIcon) sunIcon.style.display = 'none';
+        if (moonIcon) moonIcon.style.display = 'block';
+      } else {
+        root.removeAttribute('data-theme');
+        if (sunIcon) sunIcon.style.display = 'block';
+        if (moonIcon) moonIcon.style.display = 'none';
+      }
+    }
+
+    function getInitialTheme() {
+      const saved = localStorage.getItem('theme');
+      if (saved) return saved;
+      return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    }
+
+    window.toggleTheme = function() {
       const btn = document.getElementById('btn-theme-toggle');
       const sunIcon = btn?.querySelector('.icon-sun');
       const moonIcon = btn?.querySelector('.icon-moon');
-      const root = document.documentElement;
+      const current = root.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+      const next = current === 'light' ? 'dark' : 'light';
+      localStorage.setItem('theme', next);
+      applyTheme(next, sunIcon, moonIcon);
+    };
 
-      function applyTheme(theme) {
-        if (theme === 'light') {
-          root.setAttribute('data-theme', 'light');
-          if (sunIcon) sunIcon.style.display = 'none';
-          if (moonIcon) moonIcon.style.display = 'block';
-        } else {
-          root.removeAttribute('data-theme');
-          if (sunIcon) sunIcon.style.display = 'block';
-          if (moonIcon) moonIcon.style.display = 'none';
-        }
-      }
-
-      function getInitialTheme() {
-        const saved = localStorage.getItem('theme');
-        if (saved) return saved;
-        return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-      }
-
-      if (btn) {
-        applyTheme(getInitialTheme());
-        btn.addEventListener('click', function() {
-          const current = root.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
-          const next = current === 'light' ? 'dark' : 'light';
-          localStorage.setItem('theme', next);
-          applyTheme(next);
-        });
-      }
-
-      // Listen for system theme changes
+    // Initialize immediately if DOM ready, else on DOMContentLoaded
+    function initTheme() {
+      const btn = document.getElementById('btn-theme-toggle');
+      const sunIcon = btn?.querySelector('.icon-sun');
+      const moonIcon = btn?.querySelector('.icon-moon');
+      applyTheme(getInitialTheme(), sunIcon, moonIcon);
       window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', function(e) {
-        if (!localStorage.getItem('theme')) {
-          applyTheme(e.matches ? 'light' : 'dark');
-        }
+        if (!localStorage.getItem('theme')) applyTheme(e.matches ? 'light' : 'dark', sunIcon, moonIcon);
       });
-    })();
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initTheme);
+    } else {
+      initTheme();
+    }
     </script>
     {% block scripts %}{% endblock %}
 </body>

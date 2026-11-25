@@ -27,15 +27,7 @@
                 </a>
             </div>
 
-            <!-- Zone 2: Navigation (Center) -->
-            <nav class="header-zone header-zone--nav app-nav" aria-label="Primary Navigation">
-                <a href="/" class="nav-link {% if request.path == '/' %}active{% endif %}">Dashboard</a>
-                <a href="/system-findings" class="nav-link {% if request.path == '/system-findings' %}active{% endif %}">System Findings</a>
-                <a href="/history" class="nav-link {% if request.path.startswith('/history') %}active{% endif %}">Scan History</a>
-                <a href="/simulations" class="nav-link {% if request.path == '/simulations' %}active{% endif %}">Simulations</a>
-            </nav>
-
-            <!-- Zone 3: Actions (Right) -->
+            <!-- Zone 2: Actions (Right) - No navbar here -->
             <div class="header-zone header-zone--actions header-actions">
                 <!-- Scheduler Status (compact) -->
                 <div class="scheduler-status" id="scheduler-status">
@@ -46,7 +38,7 @@
                     <div class="scheduler-eta" id="scheduler-eta" title="Time until next automated scan">Next scan in: —</div>
                 </div>
 
-                <!-- Scan Progress Panel (inline in actions zone) -->
+                <!-- Scan Progress Panel (always visible when active, below header on desktop) -->
                 <div class="scan-progress-panel" id="scan-progress-panel" aria-live="polite">
                     <div class="scan-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
                         <div class="scan-progress-fill" id="scan-progress-fill" style="width: 0%"></div>
@@ -59,6 +51,68 @@
                     </div>
                     <span class="scan-progress-label" id="scan-progress-label">Initializing…</span>
                 </div>
+
+                <!-- Notification Bell -->
+                <div class="notification-bell-wrapper" id="notification-bell-wrapper">
+                    <button type="button" class="btn btn-secondary btn-sm notification-bell" id="notification-bell" aria-label="Notifications" aria-expanded="false" aria-controls="notification-dropdown">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                        </svg>
+                        <span class="notification-badge" id="notification-badge" aria-live="polite" style="display:none;">0</span>
+                    </button>
+                    <div class="notification-dropdown" id="notification-dropdown" role="menu" aria-label="Notification history" style="display:none;">
+                        <div class="notification-dropdown-header">
+                            <span>Notifications</span>
+                            <button type="button" class="btn btn-ghost btn-xs" id="clear-notifications" aria-label="Clear all notifications">Clear all</button>
+                        </div>
+                        <div class="notification-list" id="notification-list" role="list"></div>
+                        <div class="notification-empty" id="notification-empty" style="display:none;">No notifications yet</div>
+                    </div>
+                </div>
+
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme" title="Toggle theme (T)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="icon-sun">
+                        <circle cx="12" cy="12" r="5"/>
+                        <line x1="12" y1="1" x2="12" y2="3"/>
+                        <line x1="12" y1="21" x2="12" y2="23"/>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                        <line x1="1" y1="12" x2="3" y2="12"/>
+                        <line x1="21" y1="12" x2="23" y2="12"/>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                    </svg>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="icon-moon" style="display:none;">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                    </svg>
+                </button>
+                <button type="button" class="btn btn-primary btn-manual-scan" id="btn-manual-scan" onclick="triggerManualScan()" aria-label="Run manual scan (S)">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                    </svg>
+                    <span>Run Scan</span>
+                </button>
+                <button type="button" class="btn btn-secondary btn-sm btn-help" id="btn-help" onclick="showHelpOverlay()" aria-label="Keyboard shortcuts (?)">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Navigation Bar (separate row below header) -->
+    <nav class="nav-bar" aria-label="Primary Navigation">
+        <div class="nav-bar-container">
+            <a href="/" class="nav-link {% if request.path == '/' %}active{% endif %}">Dashboard</a>
+            <a href="/system-findings" class="nav-link {% if request.path == '/system-findings' %}active{% endif %}">System Findings</a>
+            <a href="/history" class="nav-link {% if request.path.startswith('/history') %}active{% endif %}">Scan History</a>
+            <a href="/simulations" class="nav-link {% if request.path == '/simulations' %}active{% endif %}">Simulations</a>
+        </div>
+    </nav>
 
                 <!-- Notification Bell -->
                 <div class="notification-bell-wrapper" id="notification-bell-wrapper">

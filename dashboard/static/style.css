@@ -453,7 +453,7 @@ pre {
   flex-wrap: wrap;
 }
 
-/* Three-zone header layout: Brand (left) | Nav (center) | Actions (right) */
+/* Two-zone header layout: Brand (left) | Actions (right) */
 .header-zone {
   display: flex;
   align-items: center;
@@ -462,12 +462,6 @@ pre {
 .header-zone--brand {
   flex: 0 0 auto; /* Never shrink or grow */
   gap: var(--space-sm);
-}
-
-.header-zone--nav {
-  flex: 1 1 480px; /* Grow to fill center, min 480px, can shrink */
-  justify-content: center;
-  min-width: 0; /* Allow shrinking below content size */
 }
 
 .header-zone--actions {
@@ -507,22 +501,6 @@ pre {
   flex-shrink: 0;
 }
 
-/* Navigation */
-.app-nav {
-  display: flex;
-  align-items: center;
-  gap: var(--space-xxs);
-  background: var(--color-surface-1);
-  padding: var(--space-xxs);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--color-hairline);
-  justify-content: center;
-  width: 100%;
-  max-width: 100%;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
-
 /* Actions zone */
 .header-actions {
   display: flex;
@@ -541,10 +519,63 @@ pre {
 /* Scan progress panel - inline in actions zone when active */
 .scan-progress-panel {
   display: none; /* Hidden by default, shown via JS when scan active */
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  max-width: var(--container-max);
+  margin: 0 auto;
+  z-index: 99;
+  border-top: none;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+  padding: var(--space-xs) var(--gutter);
 }
 
 .scan-progress-panel.visible {
   display: flex;
+}
+
+/* Navigation Bar (separate row below header) */
+.nav-bar {
+  background: var(--color-canvas);
+  border-bottom: 1px solid var(--color-hairline);
+  position: sticky;
+  top: 48px; /* Height of header */
+  z-index: 90;
+  backdrop-filter: blur(8px);
+}
+
+.nav-bar-container {
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: var(--space-xxs) var(--gutter);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.nav-bar .nav-link {
+  color: var(--color-ink-subtle);
+  text-decoration: none;
+  padding: var(--space-xxs) var(--space-sm);
+  border-radius: var(--radius-md);
+  font-size: var(--text-body-sm);
+  font-weight: 500;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.nav-bar .nav-link:hover {
+  color: var(--color-ink);
+  background: var(--color-surface-2);
+}
+
+.nav-bar .nav-link.active {
+  color: var(--color-ink);
+  background: var(--color-primary);
 }
 
 /* Mobile responsive */
@@ -552,12 +583,6 @@ pre {
   .header-container {
     justify-content: space-between;
     gap: var(--space-sm);
-  }
-  .header-zone--nav {
-    order: 3;
-    width: 100%;
-    flex: 1 1 100%;
-    justify-content: center;
   }
   .header-zone--actions {
     order: 2;
@@ -567,38 +592,26 @@ pre {
   .header-zone--brand {
     order: 1;
   }
+  .scan-progress-panel {
+    position: static;
+    box-shadow: none;
+    border-radius: var(--radius-md);
+    margin: var(--space-xs) var(--gutter) 0;
+  }
+  .nav-bar {
+    top: auto;
+    position: static;
+  }
 }
 
 @media (max-width: 480px) {
-  .app-nav { gap: var(--space-xxs); }
-  .nav-link { padding: var(--space-xxs) var(--space-xs); font-size: var(--text-caption); }
+  .nav-bar .nav-link { padding: var(--space-xxs) var(--space-xs); font-size: var(--text-caption); }
   .header-actions { gap: var(--space-xs); }
   .btn-manual-scan span { display: none; }
   .scheduler-status { flex-direction: column; gap: var(--space-xxs); align-items: center; }
   .scheduler-eta { font-size: var(--text-caption); }
   .scan-progress-panel { display: none !important; }
 }
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-}
-
-.brand-link {
-  color: var(--color-ink);
-  text-decoration: none;
-  font-family: var(--font-display);
-  font-size: var(--text-headline);
-  font-weight: var(--weight-display);
-  letter-spacing: var(--tracking-headline);
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-}
-
-.brand-logo {
   width: 28px;
   height: 28px;
   display: inline-flex;

@@ -40,44 +40,92 @@
     {% if latest_scan_id is not none %}
     <section class="metrics-grid">
         <div class="metric-card">
-            <div class="metric-title">Latest Completed Scan</div>
+            <div class="metric-top">
+                <div class="metric-title">Latest Completed Scan</div>
+                <span class="metric-icon" aria-hidden="true">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                </span>
+            </div>
             <div class="metric-value">#{{ scan.id }}</div>
             <div class="metric-footer">{{ scan.scan_time or scan.completed_at }} • {{ "%.1f"|format(scan.scan_duration_ms or scan.duration_ms or 0) }} ms</div>
         </div>
         <div class="metric-card metric-threat">
-            <div class="metric-title">High Risk Entities</div>
+            <div class="metric-top">
+                <div class="metric-title">High Risk Entities</div>
+                <span class="metric-icon text-danger" aria-hidden="true">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                </span>
+            </div>
             <div class="metric-value text-danger">{{ high_count }}</div>
             <div class="metric-footer">Score ≥ 0.60 (Multi-Signal Breach)</div>
         </div>
         <div class="metric-card metric-medium">
-            <div class="metric-title">Medium Risk Entities</div>
+            <div class="metric-top">
+                <div class="metric-title">Medium Risk Entities</div>
+                <span class="metric-icon text-warning" aria-hidden="true">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                </span>
+            </div>
             <div class="metric-value text-warning">{{ med_count }}</div>
             <div class="metric-footer">0.40 ≤ Score &lt; 0.60</div>
         </div>
         <div class="metric-card metric-low">
-            <div class="metric-title">Low Risk / Clean</div>
+            <div class="metric-top">
+                <div class="metric-title">Low Risk / Clean</div>
+                <span class="metric-icon text-info" aria-hidden="true">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                </span>
+            </div>
             <div class="metric-value text-info">{{ low_count }}</div>
             <div class="metric-footer">Score &lt; 0.40</div>
         </div>
-        <div class="metric-card">
-            <div class="metric-title">Forensic Evidence</div>
+        <div class="metric-card metric-evidence">
+            <div class="metric-top">
+                <div class="metric-title">Forensic Evidence</div>
+                <span class="metric-icon" aria-hidden="true">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                </span>
+            </div>
             <div class="metric-value">{{ threat_count }} <span class="metric-subval">threats</span></div>
             <div class="metric-footer">{{ diag_count }} operational diagnostics isolated</div>
         </div>
     </section>
+
+    {% if entities %}
+    {% set total_ent = entities|length %}
+    <div class="risk-distribution-bar" title="Risk Distribution: {{ high_count }} High, {{ med_count }} Medium, {{ low_count }} Low">
+        {% if high_count > 0 %}
+        <div class="risk-seg-high" style="width: {{ (high_count / total_ent * 100)|round(2) }}%;"></div>
+        {% endif %}
+        {% if med_count > 0 %}
+        <div class="risk-seg-medium" style="width: {{ (med_count / total_ent * 100)|round(2) }}%;"></div>
+        {% endif %}
+        {% if low_count > 0 %}
+        <div class="risk-seg-low" style="width: {{ (low_count / total_ent * 100)|round(2) }}%;"></div>
+        {% endif %}
+    </div>
+    {% endif %}
 
     <!-- 3. Risk-Ranked Entity Table -->
     <section class="card table-card">
         <div class="card-header">
             <div class="card-header-title">
                 <h2>Correlated Entities (Scan #{{ scan.id }})</h2>
-                <span class="count-badge">{{ entities|length }} entities</span>
+                <span class="count-badge" id="visible-entity-count">{{ entities|length }} entities</span>
             </div>
-            <div class="table-filters">
-                <button type="button" class="btn-filter active" onclick="filterEntities('ALL', this)">All</button>
-                <button type="button" class="btn-filter text-danger" onclick="filterEntities('HIGH', this)">High ({{ high_count }})</button>
-                <button type="button" class="btn-filter text-warning" onclick="filterEntities('MEDIUM', this)">Medium ({{ med_count }})</button>
-                <button type="button" class="btn-filter text-info" onclick="filterEntities('LOW', this)">Low ({{ low_count }})</button>
+            <div class="table-controls">
+                <div class="search-box">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                    </svg>
+                    <input type="text" id="entity-search" class="search-input" placeholder="Search process, PID, signal..." oninput="applyEntityFilters()" aria-label="Search correlated entities">
+                </div>
+                <div class="table-filters">
+                    <button type="button" class="btn-filter active" onclick="filterEntities('ALL', this)">All</button>
+                    <button type="button" class="btn-filter text-danger" onclick="filterEntities('HIGH', this)">High ({{ high_count }})</button>
+                    <button type="button" class="btn-filter text-warning" onclick="filterEntities('MEDIUM', this)">Medium ({{ med_count }})</button>
+                    <button type="button" class="btn-filter text-info" onclick="filterEntities('LOW', this)">Low ({{ low_count }})</button>
+                </div>
             </div>
         </div>
 
@@ -86,18 +134,20 @@
             <table class="data-table" id="entities-table">
                 <thead>
                     <tr>
-                        <th style="width: 100px;">Severity</th>
-                        <th style="width: 90px;">Risk Score</th>
+                        <th style="width: 105px;">Severity</th>
+                        <th style="width: 130px;">Risk Score</th>
                         <th>Process / Entity Name</th>
                         <th style="width: 90px;">PID</th>
                         <th>Contributing Signals</th>
-                        <th>Entity Type</th>
+                        <th style="width: 110px;">Entity Type</th>
                         <th style="width: 120px; text-align: right;">Forensics</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for ent in entities %}
-                    <tr class="entity-row severity-{{ ent.risk_level|lower }}" data-severity="{{ ent.risk_level }}">
+                    <tr class="entity-row severity-{{ ent.risk_level|lower }}"
+                        data-severity="{{ ent.risk_level }}"
+                        data-search="{{ (ent.process_name ~ ' ' ~ (ent.pid if ent.pid is not none else '') ~ ' ' ~ (ent.signals_triggered or ''))|lower }}">
                         <td>
                             <span class="badge badge-severity badge-{{ ent.risk_level|lower }}">
                                 {{ ent.risk_level }}
@@ -228,10 +278,10 @@
 </div>
 
 <!-- Confirmation Modal for Baseline Reset -->
-<div id="reset-modal" class="modal-overlay hidden">
-    <div class="modal-dialog">
+<div id="reset-modal" class="modal-overlay hidden" onclick="if (event.target === this) closeResetModal()">
+    <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="reset-modal-title">
         <div class="modal-header">
-            <h3>⚠️ Confirm Persistence Baseline Reset</h3>
+            <h3 id="reset-modal-title">⚠️ Confirm Persistence Baseline Reset</h3>
         </div>
         <div class="modal-body">
             <p>Are you sure you want to reset all persistence reference baselines?</p>

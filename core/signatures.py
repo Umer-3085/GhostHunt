@@ -45,6 +45,7 @@ import json
 import logging
 import os
 import sys
+import threading
 import time
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
@@ -313,6 +314,12 @@ def is_unusual_path(file_path: str) -> Tuple[bool, str, Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 # PE Header Metadata Analysis
 # ---------------------------------------------------------------------------
+# Thread-safe in-memory cache for PE header inspections to avoid re-parsing
+# identical system binaries (e.g. ntdll.dll, kernel32.dll) hundreds of times per scan.
+_PE_HEADER_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+_PE_HEADER_CACHE_LOCK = threading.Lock()
+
+
 def inspect_pe_headers(file_path: str) -> Dict[str, Any]:
     """
     Extracts structural PE header metadata using pefile.
@@ -323,10 +330,21 @@ def inspect_pe_headers(file_path: str) -> Dict[str, Any]:
     but does NOT verify cryptographic validity or chain of trust.
 
     Handles non-PE, truncated, or malformed files safely.
+    Utilizes path+mtime caching to prevent redundant parsing across hundreds of processes.
     """
     norm = normalize_path(file_path)
     if not os.path.exists(norm):
         return {"success": False, "error": f"File does not exist: {file_path}"}
+
+    try:
+        mtime = os.path.getmtime(norm)
+    except OSError:
+        mtime = 0.0
+
+    with _PE_HEADER_CACHE_LOCK:
+        cached = _PE_HEADER_CACHE.get(norm)
+        if cached is not None and cached[0] == mtime:
+            return dict(cached[1])
 
     try:
         pe = pefile.PE(norm, fast_load=True)
@@ -357,7 +375,7 @@ def inspect_pe_headers(file_path: str) -> Dict[str, Any]:
                 for s in pe.sections
             ] if hasattr(pe, "sections") else []
 
-            return {
+            result = {
                 "success": True,
                 "machine": machine,
                 "timestamp": timestamp,
@@ -367,6 +385,11 @@ def inspect_pe_headers(file_path: str) -> Dict[str, Any]:
                 "cert_table_offset": cert_table_offset,
                 "cert_table_size": cert_table_size,
             }
+
+            with _PE_HEADER_CACHE_LOCK:
+                _PE_HEADER_CACHE[norm] = (mtime, result)
+
+            return result
         finally:
             pe.close()
     except pefile.PEFormatError as ex:
@@ -848,6 +871,7 @@ def run_scan(
     module_caller: Optional[Callable[[int], Tuple[bool, List[str], Optional[str]]]] = None,
     embedded_caller: Optional[Callable[[str], Tuple[str, str]]] = None,
     catalog_caller: Optional[Callable[[str], Tuple[str, str, Optional[str]]]] = None,
+    progress_callback: Optional[Callable[[int, int], None]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Executes the Signal 3 Signature Verification and DLL Path Anomaly Engine.
@@ -873,8 +897,15 @@ def run_scan(
             pids_to_inspect = [os.getpid()]
 
     findings: List[Dict[str, Any]] = []
+    total_pids = len(pids_to_inspect)
 
-    for pid in pids_to_inspect:
+    for idx, pid in enumerate(pids_to_inspect):
+        if progress_callback is not None:
+            try:
+                progress_callback(idx + 1, total_pids)
+            except Exception:
+                pass
+
         proc_name = f"PID_{pid}"
         try:
             if psutil.pid_exists(pid):

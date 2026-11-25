@@ -9,6 +9,39 @@
         <p class="subtitle">Immutable audit trail of all automated and manual scan cycles.</p>
     </div>
 
+    <!-- Scan Compare Banner (shown when 2 scans are selected) -->
+    <div class="compare-banner" id="compare-banner" style="display:none;" aria-live="polite">
+        <span class="compare-banner-label">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            Compare mode: <strong><span id="compare-sel-a">—</span></strong> vs <strong><span id="compare-sel-b">—</span></strong>
+        </span>
+        <div class="compare-banner-actions">
+            <button type="button" class="btn btn-primary btn-sm" id="btn-compare" onclick="runCompare()" disabled>Compare →</button>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="clearCompare()">Clear</button>
+        </div>
+    </div>
+
+    <!-- Scan Compare Results Panel -->
+    <div class="card compare-panel" id="compare-panel" style="display:none;">
+        <div class="card-header">
+            <div class="card-header-title">
+                <h2 class="card-title">Scan Comparison: <span id="compare-title">—</span></h2>
+                <span class="badge badge-secondary">Delta Analysis</span>
+            </div>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="closeComparePanel()">✕ Close</button>
+        </div>
+        <div class="compare-legend">
+            <span class="compare-legend-item"><span class="compare-dot dot-new"></span> New (appeared)</span>
+            <span class="compare-legend-item"><span class="compare-dot dot-resolved"></span> Resolved (gone)</span>
+            <span class="compare-legend-item"><span class="compare-dot dot-escalated"></span> Escalated (risk ↑)</span>
+            <span class="compare-legend-item"><span class="compare-dot dot-deescalated"></span> De-escalated (risk ↓)</span>
+            <span class="compare-legend-item"><span class="compare-dot dot-unchanged"></span> Unchanged</span>
+        </div>
+        <div id="compare-results-content">
+            <div class="compare-loading"><span class="spin">⟳</span> Computing diff…</div>
+        </div>
+    </div>
+
     <!-- If a specific historical scan was selected for drill-down -->
     {% if selected_scan %}
     <section class="card selected-scan-card">
@@ -70,6 +103,10 @@
                 <h2 class="card-title">All Historical Execution Cycles</h2>
                 <span class="count-badge">{{ history|length }} scans</span>
             </div>
+            <div class="compare-instructions text-tertiary" style="font-size: var(--text-caption);">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                Select 2 scans to compare
+            </div>
         </div>
 
         {% if history %}
@@ -77,6 +114,9 @@
             <table class="data-table">
                 <thead>
                     <tr>
+                        <th style="width: 44px;">
+                            <span class="sr-only">Compare</span>
+                        </th>
                         <th style="width: 80px;">Scan ID</th>
                         <th style="width: 120px;">Status</th>
                         <th>Started At</th>
@@ -89,7 +129,16 @@
                 </thead>
                 <tbody>
                     {% for s in history %}
-                    <tr class="history-row {% if selected_scan and selected_scan.id == s.id %}selected{% endif %} process-row">
+                    <tr class="history-row {% if selected_scan and selected_scan.id == s.id %}selected{% endif %} process-row"
+                        data-scan-id="{{ s.id }}"
+                        data-status="{{ s.status }}">
+                        <td class="compare-checkbox-cell">
+                            {% if s.status == 'COMPLETED' %}
+                            <input type="checkbox" class="compare-checkbox" data-scan-id="{{ s.id }}"
+                                   onchange="handleCompareSelect(this)"
+                                   aria-label="Select scan #{{ s.id }} for comparison">
+                            {% endif %}
+                        </td>
                         <td class="font-mono font-bold">#{{ s.id }}</td>
                         <td>
                             <span class="badge badge-state-{{ s.status|lower }}">
@@ -118,4 +167,194 @@
         {% endif %}
     </section>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let compareSelection = [];
+
+function handleCompareSelect(checkbox) {
+    const scanId = parseInt(checkbox.dataset.scanId);
+    if (checkbox.checked) {
+        if (compareSelection.length >= 2) {
+            checkbox.checked = false;
+            if (typeof showToast === 'function') {
+                showToast('Select only 2 scans to compare. Deselect one first.', 'warning', 3000);
+            }
+            return;
+        }
+        compareSelection.push(scanId);
+    } else {
+        compareSelection = compareSelection.filter(id => id !== scanId);
+    }
+    updateCompareBanner();
+}
+
+function updateCompareBanner() {
+    const banner = document.getElementById('compare-banner');
+    const selA = document.getElementById('compare-sel-a');
+    const selB = document.getElementById('compare-sel-b');
+    const btn = document.getElementById('btn-compare');
+
+    if (compareSelection.length === 0) {
+        if (banner) banner.style.display = 'none';
+        return;
+    }
+
+    if (banner) banner.style.display = 'flex';
+    if (selA) selA.textContent = compareSelection[0] ? `#${compareSelection[0]}` : '—';
+    if (selB) selB.textContent = compareSelection[1] ? `#${compareSelection[1]}` : '(select one more)';
+    if (btn) btn.disabled = compareSelection.length < 2;
+}
+
+function clearCompare() {
+    compareSelection = [];
+    document.querySelectorAll('.compare-checkbox').forEach(cb => cb.checked = false);
+    updateCompareBanner();
+    document.getElementById('compare-panel')?.style.setProperty('display', 'none');
+}
+
+function closeComparePanel() {
+    document.getElementById('compare-panel')?.style.setProperty('display', 'none');
+}
+
+async function runCompare() {
+    if (compareSelection.length < 2) return;
+    const [idA, idB] = compareSelection.slice().sort((a, b) => a - b); // older first
+
+    const panel = document.getElementById('compare-panel');
+    const title = document.getElementById('compare-title');
+    const content = document.getElementById('compare-results-content');
+
+    if (panel) panel.style.display = 'block';
+    if (title) title.textContent = `#${idA} → #${idB}`;
+    if (content) content.innerHTML = '<div class="compare-loading"><span class="spin">⟳</span> Loading scan data…</div>';
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    try {
+        const [resA, resB] = await Promise.all([
+            fetch(`/api/scores?scan_id=${idA}&per_page=500`),
+            fetch(`/api/scores?scan_id=${idB}&per_page=500`)
+        ]);
+        const dataA = await resA.json();
+        const dataB = await resB.json();
+
+        const entitiesA = dataA.entities || [];
+        const entitiesB = dataB.entities || [];
+
+        // Build maps keyed by entity key (process_name + pid or item_key)
+        const keyFn = e => e.item_key || `${e.process_name}:${e.pid ?? 'sys'}`;
+        const mapA = new Map(entitiesA.map(e => [keyFn(e), e]));
+        const mapB = new Map(entitiesB.map(e => [keyFn(e), e]));
+
+        const riskRank = { HIGH: 3, MEDIUM: 2, LOW: 1 };
+
+        const newEntities = [];
+        const resolved = [];
+        const escalated = [];
+        const deescalated = [];
+        const unchanged = [];
+
+        // Check all in B
+        mapB.forEach((eB, key) => {
+            if (!mapA.has(key)) {
+                newEntities.push(eB);
+            } else {
+                const eA = mapA.get(key);
+                const rankA = riskRank[eA.risk_level] || 0;
+                const rankB = riskRank[eB.risk_level] || 0;
+                if (rankB > rankA) escalated.push({ before: eA, after: eB });
+                else if (rankB < rankA) deescalated.push({ before: eA, after: eB });
+                else unchanged.push(eB);
+            }
+        });
+        // Check resolved (in A but not B)
+        mapA.forEach((eA, key) => {
+            if (!mapB.has(key)) resolved.push(eA);
+        });
+
+        const severity_badge = (level) => {
+            const cls = { HIGH: 'badge-high', MEDIUM: 'badge-medium', LOW: 'badge-low' }[level] || '';
+            return `<span class="badge badge-severity ${cls}">${level}</span>`;
+        };
+
+        let html = '';
+
+        const renderSection = (title, dotCls, items, renderFn) => {
+            if (items.length === 0) return '';
+            return `
+                <div class="compare-section">
+                    <div class="compare-section-header">
+                        <span class="compare-dot ${dotCls}"></span>
+                        <strong>${title}</strong>
+                        <span class="count-badge">${items.length}</span>
+                    </div>
+                    <div class="compare-section-rows">
+                        ${items.map(renderFn).join('')}
+                    </div>
+                </div>
+            `;
+        };
+
+        html += renderSection(`New Entities (appeared in #${idB})`, 'dot-new', newEntities, e =>
+            `<div class="compare-row compare-row-new">
+                <span class="compare-row-name font-bold">${escH(e.process_name)}</span>
+                <span class="compare-row-pid font-mono text-tertiary">${e.pid ?? 'sys'}</span>
+                ${severity_badge(e.risk_level)}
+                <span class="compare-row-score font-mono">${e.score?.toFixed(2) ?? '—'}</span>
+            </div>`
+        );
+
+        html += renderSection(`Resolved (present in #${idA}, gone in #${idB})`, 'dot-resolved', resolved, e =>
+            `<div class="compare-row compare-row-resolved">
+                <span class="compare-row-name font-bold text-tertiary">${escH(e.process_name)}</span>
+                <span class="compare-row-pid font-mono text-tertiary">${e.pid ?? 'sys'}</span>
+                ${severity_badge(e.risk_level)}
+                <span class="compare-row-score font-mono text-tertiary">${e.score?.toFixed(2) ?? '—'}</span>
+            </div>`
+        );
+
+        html += renderSection('Escalated (risk increased)', 'dot-escalated', escalated, ({ before: a, after: b }) =>
+            `<div class="compare-row compare-row-escalated">
+                <span class="compare-row-name font-bold">${escH(b.process_name)}</span>
+                <span class="compare-row-pid font-mono text-tertiary">${b.pid ?? 'sys'}</span>
+                ${severity_badge(a.risk_level)} <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg> ${severity_badge(b.risk_level)}
+                <span class="compare-row-score font-mono">${a.score?.toFixed(2) ?? '—'} → <strong>${b.score?.toFixed(2) ?? '—'}</strong></span>
+            </div>`
+        );
+
+        html += renderSection('De-escalated (risk decreased)', 'dot-deescalated', deescalated, ({ before: a, after: b }) =>
+            `<div class="compare-row compare-row-deescalated">
+                <span class="compare-row-name font-bold">${escH(b.process_name)}</span>
+                <span class="compare-row-pid font-mono text-tertiary">${b.pid ?? 'sys'}</span>
+                ${severity_badge(a.risk_level)} <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg> ${severity_badge(b.risk_level)}
+                <span class="compare-row-score font-mono">${a.score?.toFixed(2) ?? '—'} → <strong>${b.score?.toFixed(2) ?? '—'}</strong></span>
+            </div>`
+        );
+
+        if (unchanged.length > 0) {
+            html += `<div class="compare-section compare-section-unchanged">
+                <div class="compare-section-header">
+                    <span class="compare-dot dot-unchanged"></span>
+                    <strong>Unchanged</strong>
+                    <span class="count-badge">${unchanged.length}</span>
+                    <span class="text-tertiary" style="font-size:var(--text-caption);">(same risk level)</span>
+                </div>
+            </div>`;
+        }
+
+        if (!html) html = '<p class="text-tertiary" style="padding: var(--space-lg);">No differences found between the two scans.</p>';
+        if (content) content.innerHTML = html;
+
+    } catch (err) {
+        if (content) content.innerHTML = `<p class="text-danger" style="padding:var(--space-lg);">Compare failed: ${err.message}</p>`;
+    }
+}
+
+function escH(text) {
+    const d = document.createElement('div');
+    d.textContent = text || '';
+    return d.innerHTML;
+}
+</script>
 {% endblock %}

@@ -31,19 +31,127 @@
         </div>
     </div>
 
-    <!-- 1. Threat Evidence Section (score_eligible == 1) -->
-    <section class="card evidence-card">
+    <!-- Signal Weight Waterfall (only for entities with a score) -->
+    {% if entity and not is_system %}
+    <section class="card signal-waterfall-card">
         <div class="card-header">
             <div class="card-header-title">
-                <h2 class="card-title">Threat Evidence ({{ threats|length }})</h2>
+                <h2 class="card-title">Risk Score Breakdown</h2>
+                <span class="badge badge-secondary">0.40 · 0.30 · 0.30 Weights</span>
+            </div>
+            <span class="waterfall-total">Total: <strong>{{ "%.2f"|format(entity.score) }}</strong></span>
+        </div>
+        <div class="signal-waterfall">
+            {% set signals_list = (entity.signals_triggered or '').split(',') | map('trim') | list %}
+
+            <!-- Process View signal (weight 0.40) -->
+            <div class="waterfall-row {% if 'process_view' in signals_list %}waterfall-active{% endif %}"
+                 data-signal="process_view"
+                 role="button" tabindex="0"
+                 aria-label="Filter findings by Process View signal"
+                 onclick="filterFindingsBySignal('process_view', this)"
+                 onkeydown="if(event.key==='Enter') filterFindingsBySignal('process_view', this)">
+                <div class="waterfall-label">
+                    <span class="signal-chip process_view">Process View</span>
+                    <span class="waterfall-weight text-tertiary">weight 0.40</span>
+                </div>
+                <div class="waterfall-bar-wrap">
+                    {% set pv_contrib = 0.40 if 'process_view' in signals_list else 0 %}
+                    <div class="waterfall-bar">
+                        <div class="waterfall-fill waterfall-fill-pv {% if 'process_view' in signals_list %}active{% endif %}"
+                             style="width: {{ (pv_contrib / 1.0 * 100)|round(1) }}%;"
+                             title="{{ '%.2f'|format(pv_contrib) }} contribution"></div>
+                    </div>
+                    <span class="waterfall-value font-mono {% if 'process_view' in signals_list %}text-danger{% else %}text-tertiary{% endif %}">
+                        {{ "%.2f"|format(pv_contrib) }}
+                    </span>
+                </div>
+            </div>
+
+            <!-- Persistence signal (weight 0.30) -->
+            <div class="waterfall-row {% if 'persistence' in signals_list %}waterfall-active{% endif %}"
+                 data-signal="persistence"
+                 role="button" tabindex="0"
+                 aria-label="Filter findings by Persistence signal"
+                 onclick="filterFindingsBySignal('persistence', this)"
+                 onkeydown="if(event.key==='Enter') filterFindingsBySignal('persistence', this)">
+                <div class="waterfall-label">
+                    <span class="signal-chip persistence">Persistence</span>
+                    <span class="waterfall-weight text-tertiary">weight 0.30</span>
+                </div>
+                <div class="waterfall-bar-wrap">
+                    {% set per_contrib = 0.30 if 'persistence' in signals_list else 0 %}
+                    <div class="waterfall-bar">
+                        <div class="waterfall-fill waterfall-fill-per {% if 'persistence' in signals_list %}active{% endif %}"
+                             style="width: {{ (per_contrib / 1.0 * 100)|round(1) }}%;"
+                             title="{{ '%.2f'|format(per_contrib) }} contribution"></div>
+                    </div>
+                    <span class="waterfall-value font-mono {% if 'persistence' in signals_list %}text-warning{% else %}text-tertiary{% endif %}">
+                        {{ "%.2f"|format(per_contrib) }}
+                    </span>
+                </div>
+            </div>
+
+            <!-- Signature signal (weight 0.30) -->
+            <div class="waterfall-row {% if 'signature' in signals_list %}waterfall-active{% endif %}"
+                 data-signal="signature"
+                 role="button" tabindex="0"
+                 aria-label="Filter findings by Signature signal"
+                 onclick="filterFindingsBySignal('signature', this)"
+                 onkeydown="if(event.key==='Enter') filterFindingsBySignal('signature', this)">
+                <div class="waterfall-label">
+                    <span class="signal-chip signature">Signature</span>
+                    <span class="waterfall-weight text-tertiary">weight 0.30</span>
+                </div>
+                <div class="waterfall-bar-wrap">
+                    {% set sig_contrib = 0.30 if 'signature' in signals_list else 0 %}
+                    <div class="waterfall-bar">
+                        <div class="waterfall-fill waterfall-fill-sig {% if 'signature' in signals_list %}active{% endif %}"
+                             style="width: {{ (sig_contrib / 1.0 * 100)|round(1) }}%;"
+                             title="{{ '%.2f'|format(sig_contrib) }} contribution"></div>
+                    </div>
+                    <span class="waterfall-value font-mono {% if 'signature' in signals_list %}text-warning{% else %}text-tertiary{% endif %}">
+                        {{ "%.2f"|format(sig_contrib) }}
+                    </span>
+                </div>
+            </div>
+
+            <div class="waterfall-total-row">
+                <div class="waterfall-label"><strong>Composite Score</strong></div>
+                <div class="waterfall-bar-wrap">
+                    <div class="waterfall-bar">
+                        <div class="waterfall-fill waterfall-fill-total"
+                             style="width: {{ (entity.score * 100)|round(1) }}%;"
+                             title="Total: {{ '%.2f'|format(entity.score) }}"></div>
+                    </div>
+                    <span class="waterfall-value font-mono font-bold badge-{{ entity.risk_level|lower }}">
+                        {{ "%.2f"|format(entity.score) }}
+                    </span>
+                </div>
+            </div>
+        </div>
+        <p class="waterfall-hint text-tertiary">Click a signal row to filter findings below by that signal domain.</p>
+    </section>
+    {% endif %}
+
+    <!-- 1. Threat Evidence Section (score_eligible == 1) -->
+    <section class="card evidence-card" id="evidence-section">
+        <div class="card-header">
+            <div class="card-header-title">
+                <h2 class="card-title">Threat Evidence (<span id="threat-count-label">{{ threats|length }}</span>)</h2>
                 <span class="badge badge-threat">Contributes to Risk Score</span>
+            </div>
+            <div class="evidence-signal-filter" id="evidence-signal-filter" style="display:none;">
+                <span class="text-tertiary" style="font-size: var(--text-caption);">Filtered by:</span>
+                <span class="signal-chip" id="active-signal-filter-label"></span>
+                <button type="button" class="btn btn-ghost btn-xs" onclick="clearSignalFilter()">× Clear</button>
             </div>
         </div>
 
         {% if threats %}
-        <div class="findings-list">
+        <div class="findings-list" id="findings-list">
             {% for t in threats %}
-            <div class="finding-item finding-threat">
+            <div class="finding-item finding-threat" data-signal="{{ t.signal }}">
                 <div class="finding-header">
                     <span class="signal-chip {{ t.signal|lower }}">
                         {{ t.signal|upper }}
@@ -68,7 +176,7 @@
             {% endfor %}
         </div>
         {% else %}
-        <div class="empty-state-card">
+        <div class="empty-state-card" id="findings-empty">
             <p>No confirmed threat signals detected for this entity.</p>
         </div>
         {% endif %}
@@ -119,4 +227,61 @@
         {% endif %}
     </section>
 </div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let activeSignalFilter = null;
+
+function filterFindingsBySignal(signal, rowEl) {
+    const allRows = document.querySelectorAll('.waterfall-row');
+    allRows.forEach(r => r.classList.remove('waterfall-selected'));
+
+    if (activeSignalFilter === signal) {
+        // Toggle off
+        activeSignalFilter = null;
+        clearSignalFilter();
+        return;
+    }
+
+    activeSignalFilter = signal;
+    if (rowEl) rowEl.classList.add('waterfall-selected');
+
+    // Filter findings
+    const findings = document.querySelectorAll('#findings-list .finding-item');
+    let visible = 0;
+    findings.forEach(f => {
+        const fSig = f.dataset.signal || '';
+        if (fSig === signal) {
+            f.style.display = '';
+            visible++;
+        } else {
+            f.style.display = 'none';
+        }
+    });
+
+    // Show filter label
+    const filterBadge = document.getElementById('evidence-signal-filter');
+    const filterLabel = document.getElementById('active-signal-filter-label');
+    const countLabel = document.getElementById('threat-count-label');
+    if (filterBadge) filterBadge.style.display = 'flex';
+    if (filterLabel) {
+        filterLabel.className = `signal-chip ${signal}`;
+        filterLabel.textContent = signal.replace('_', ' ').toUpperCase();
+    }
+    if (countLabel) countLabel.textContent = `${visible} (filtered)`;
+}
+
+function clearSignalFilter() {
+    activeSignalFilter = null;
+    document.querySelectorAll('.waterfall-row').forEach(r => r.classList.remove('waterfall-selected'));
+    const findings = document.querySelectorAll('#findings-list .finding-item');
+    findings.forEach(f => f.style.display = '');
+    const filterBadge = document.getElementById('evidence-signal-filter');
+    if (filterBadge) filterBadge.style.display = 'none';
+    const countLabel = document.getElementById('threat-count-label');
+    if (countLabel) countLabel.textContent = findings.length;
+}
+</script>
 {% endblock %}

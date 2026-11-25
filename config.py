@@ -28,7 +28,10 @@ APP_VERSION: str = "1.4.3"
 # Engine Scheduling & Performance Parameters
 # ---------------------------------------------------------------------------
 # Scheduling interval for background scanner (evaluation target, not bound)
-SCAN_INTERVAL_SECONDS: int = 10
+# Increased from 10s to 300s (5 min) to allow full scans to complete.
+# A full scan (process views + persistence + signatures + correlation)
+# typically takes 2-5 minutes due to signature verification (Authenticode + Catalog).
+SCAN_INTERVAL_SECONDS: int = 300
 
 # Micro-delay (50 ms) for two-pass transient process confirmation
 MICRO_DELAY_SECONDS: float = 0.05

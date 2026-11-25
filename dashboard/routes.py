@@ -105,6 +105,8 @@ def api_status():
         }), 503
 
     sched = scheduler.GLOBAL_SCHEDULER
+    scan_progress = scheduler.get_scan_progress()
+
     return jsonify({
         "success": True,
         "status": "ok",
@@ -121,6 +123,7 @@ def api_status():
         },
         "latest_completed_scan_id": latest_scan_id,
         "latest_scan": latest_scan,
+        "scan_progress": scan_progress,
     }), 200
 
 
@@ -132,11 +135,30 @@ def api_trigger_scan():
     """
     Triggers an immediate scan cycle guarded by the shared operation lock.
     Returns HTTP 409 Conflict if another scan or reset is active.
+    Supports asynchronous execution via ?async=true or JSON {"async": true}.
     """
     db_path = get_active_db_path()
     sched = scheduler.GLOBAL_SCHEDULER
     # Temporarily set scheduler db_path to match active app config
     sched.db_path = db_path
+
+    payload = request.get_json(silent=True) or {}
+    is_async = (
+        request.args.get("async", "").lower() in ("1", "true")
+        or payload.get("async") is True
+        or request.headers.get("X-Async-Scan", "").lower() in ("1", "true")
+    )
+
+    if is_async:
+        res = sched.trigger_manual_scan_async()
+        if res.get("status") == "busy":
+            return jsonify({
+                "success": False,
+                "status": "busy",
+                "error": "Conflict",
+                "message": res.get("message", "Another protected operation is in progress."),
+            }), 409
+        return jsonify(res), 202
 
     res = sched.trigger_manual_scan(timeout=0.0)
 
@@ -179,6 +201,44 @@ def api_latest_scan():
 
     status = db.get_scan_status(latest_id, db_path=db_path)
     return jsonify({"success": True, "scan": status}), 200
+
+
+@dashboard_bp.route("/api/scan/progress", methods=["GET"])
+@dashboard_bp.route("/api/scan/<int:scan_id>/progress", methods=["GET"])
+def api_scan_progress(scan_id: Optional[int] = None):
+    """
+    Returns the current in-progress scan phase and progress percentage.
+    If scan_id is provided, returns progress or completed status for that specific scan.
+    Used by the UI to display a live progress panel during active scans.
+    """
+    progress = scheduler.get_scan_progress()
+    if scan_id is not None:
+        if progress.get("scan_id") == scan_id:
+            return jsonify({
+                "success": True,
+                "scan_id": scan_id,
+                "progress": progress,
+            }), 200
+
+        db_path = get_active_db_path()
+        status = db.get_scan_status(scan_id, db_path=db_path)
+        if status is not None:
+            is_done = status.get("status") == "COMPLETED"
+            return jsonify({
+                "success": True,
+                "scan_id": scan_id,
+                "progress": {
+                    "scan_id": scan_id,
+                    "phase": "complete" if is_done else status.get("status", "unknown").lower(),
+                    "progress": 100 if is_done else 0,
+                },
+                "scan": status,
+            }), 200
+
+    return jsonify({
+        "success": True,
+        "progress": progress,
+    }), 200
 
 
 @dashboard_bp.route("/api/scan/<int:scan_id>", methods=["GET"])
@@ -270,7 +330,37 @@ def api_scores():
     end_idx = start_idx + per_page
     paged_entities = all_scores[start_idx:end_idx]
 
-    return jsonify({
+    # 6. Delta calculation if since_scan_id is provided
+    delta = None
+    raw_since = request.args.get("since_scan_id")
+    if raw_since is not None:
+        try:
+            since_id = int(raw_since)
+            if since_id > 0 and since_id != scan_id:
+                prev_scores = db.get_risk_scores_for_scan(since_id, db_path=db_path)
+                prev_map = {p.get("item_key") or f"{p.get('process_name')}:{p.get('pid')}": p for p in prev_scores}
+                curr_map = {c.get("item_key") or f"{c.get('process_name')}:{c.get('pid')}": c for c in all_scores}
+
+                new_rows = [c for k, c in curr_map.items() if k not in prev_map]
+                updated_rows = []
+                for k, c in curr_map.items():
+                    if k in prev_map:
+                        p = prev_map[k]
+                        if p.get("risk_level") != c.get("risk_level") or abs(p.get("score", 0) - c.get("score", 0)) > 0.01:
+                            c_copy = dict(c)
+                            c_copy["prev_risk_level"] = p.get("risk_level")
+                            c_copy["prev_score"] = p.get("score")
+                            updated_rows.append(c_copy)
+                delta = {
+                    "new_entities": new_rows,
+                    "updated_entities": updated_rows,
+                    "new_count": len(new_rows),
+                    "updated_count": len(updated_rows),
+                }
+        except ValueError:
+            pass
+
+    response_data = {
         "success": True,
         "scan_id": scan_id,
         "total_count": total_count,
@@ -278,7 +368,11 @@ def api_scores():
         "per_page": per_page,
         "total_pages": total_pages,
         "entities": paged_entities,
-    }), 200
+    }
+    if delta is not None:
+        response_data["delta"] = delta
+
+    return jsonify(response_data), 200
 
 
 # ===========================================================================
@@ -384,6 +478,22 @@ def api_history():
     }), 200
 
 
+@dashboard_bp.route("/api/scans/recent", methods=["GET"])
+def api_recent_scans():
+    """
+    Returns the last 10 completed scans with summary data for the timeline card.
+    """
+    db_path = get_active_db_path()
+    history = db.get_scan_history(limit=10, db_path=db_path)
+    # Filter to only completed scans
+    completed = [h for h in history if h.get("status") == "COMPLETED"]
+    return jsonify({
+        "success": True,
+        "count": len(completed),
+        "scans": completed,
+    }), 200
+
+
 # ===========================================================================
 # 6. REST API: Persistence Baseline Management (FR-2, FR-6.6)
 # ===========================================================================
@@ -427,6 +537,21 @@ def api_baseline_accepted():
         "count": len(accepted),
         "accepted": [dict(entry) for entry in accepted.values()],
     }), 200
+
+
+@dashboard_bp.route("/api/baseline/diff", methods=["GET"])
+def api_baseline_diff():
+    """
+    Returns structured forensic diff comparing accepted baseline vs candidate inventory.
+    Categorizes entries into ADDED, REMOVED, MODIFIED, and UNCHANGED.
+    """
+    db_path = get_active_db_path()
+    category = request.args.get("category")
+    if category and category not in config.PERSISTENCE_CATEGORIES:
+        abort(400, description=f"Invalid category: must be one of {config.PERSISTENCE_CATEGORIES}")
+
+    diff_data = db.compute_baseline_diff(category=category, db_path=db_path)
+    return jsonify({"success": True, "diff": diff_data}), 200
 
 
 @dashboard_bp.route("/api/baseline/accept", methods=["POST"])

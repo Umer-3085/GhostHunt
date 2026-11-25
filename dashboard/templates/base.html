@@ -14,7 +14,8 @@
 <body>
     <header class="app-header">
         <div class="header-container">
-            <div class="brand">
+            <!-- Zone 1: Brand (Left) -->
+            <div class="header-zone header-zone--brand">
                 <a href="/" class="brand-link">
                     <span class="brand-logo" aria-hidden="true">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -26,32 +27,35 @@
                 </a>
             </div>
 
-            <nav class="app-nav" aria-label="Primary Navigation">
+            <!-- Zone 2: Navigation (Center) -->
+            <nav class="header-zone header-zone--nav app-nav" aria-label="Primary Navigation">
                 <a href="/" class="nav-link {% if request.path == '/' %}active{% endif %}">Dashboard</a>
                 <a href="/system-findings" class="nav-link {% if request.path == '/system-findings' %}active{% endif %}">System Findings</a>
                 <a href="/history" class="nav-link {% if request.path.startswith('/history') %}active{% endif %}">Scan History</a>
                 <a href="/simulations" class="nav-link {% if request.path == '/simulations' %}active{% endif %}">Simulations</a>
             </nav>
 
-            <div class="header-actions">
+            <!-- Zone 3: Actions (Right) -->
+            <div class="header-zone header-zone--actions header-actions">
+                <!-- Scheduler Status (compact) -->
                 <div class="scheduler-status" id="scheduler-status">
-                    <div class="scheduler-badge {% if scheduler_running %}running{% else %}idle{% endif %}" id="scheduler-indicator" title="In-process background scheduler status">
+                    <div class="scheduler-badge {% if scheduler_running %}running{% else %}idle{% endif %}" id="scheduler-indicator" title="Background scheduler status">
                         <span class="dot"></span>
-                        <span class="label">Scheduler: {% if scheduler_running %}ACTIVE{% else %}STANDBY{% endif %}</span>
+                        <span class="label">{% if scheduler_running %}ACTIVE{% else %}STANDBY{% endif %}</span>
                     </div>
                     <div class="scheduler-eta" id="scheduler-eta" title="Time until next automated scan">Next scan in: —</div>
                 </div>
 
-                <!-- Scan Progress Panel (appears below header on mobile, inline on desktop when active) -->
-                <div class="scan-progress-panel" id="scan-progress-panel" aria-live="polite" style="display:none;">
+                <!-- Scan Progress Panel (inline in actions zone) -->
+                <div class="scan-progress-panel" id="scan-progress-panel" aria-live="polite">
                     <div class="scan-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
                         <div class="scan-progress-fill" id="scan-progress-fill" style="width: 0%"></div>
                     </div>
                     <div class="scan-progress-phases" id="scan-progress-phases">
-                        <span class="phase-pill" data-phase="process_views" title="Process View Enumeration">PV</span>
-                        <span class="phase-pill" data-phase="persistence" title="Persistence Enumeration">PER</span>
-                        <span class="phase-pill" data-phase="signatures" title="Signature Verification">SIG</span>
-                        <span class="phase-pill" data-phase="correlation" title="Risk Correlation">COR</span>
+                        <span class="phase-pill" data-phase="process_views" title="Process View Enumeration">Process Views</span>
+                        <span class="phase-pill" data-phase="persistence" title="Persistence Enumeration">Persistence</span>
+                        <span class="phase-pill" data-phase="signatures" title="Signature Verification">Signatures</span>
+                        <span class="phase-pill" data-phase="correlation" title="Risk Correlation">Correlation</span>
                     </div>
                     <span class="scan-progress-label" id="scan-progress-label">Initializing…</span>
                 </div>

@@ -453,13 +453,61 @@ pre {
   flex-wrap: wrap;
 }
 
+/* Three-zone header layout: Brand (left) | Nav (center) | Actions (right) */
+.header-zone {
+  display: flex;
+  align-items: center;
+}
+
+.header-zone--brand {
+  flex: 0 0 auto; /* Never shrink or grow */
+  gap: var(--space-sm);
+}
+
+.header-zone--nav {
+  flex: 1 1 480px; /* Grow to fill center, min 480px, can shrink */
+  justify-content: center;
+  min-width: 0; /* Allow shrinking below content size */
+}
+
+.header-zone--actions {
+  flex: 0 0 auto; /* Never shrink or grow - always on one line */
+  gap: var(--space-sm);
+  justify-content: flex-end;
+}
+
 .brand {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
+}
+
+.brand-link {
+  color: var(--color-ink);
+  text-decoration: none;
+  font-family: var(--font-display);
+  font-size: var(--text-headline);
+  font-weight: var(--weight-display);
+  letter-spacing: var(--tracking-headline);
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.brand-logo {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
   flex-shrink: 0;
 }
 
+/* Navigation */
 .app-nav {
   display: flex;
   align-items: center;
@@ -468,18 +516,19 @@ pre {
   padding: var(--space-xxs);
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-hairline);
-  flex: 1 1 480px; /* grow, shrink, minimum 480px - ensures nav always has space */
   justify-content: center;
-  min-width: 0;
+  width: 100%;
+  max-width: 100%;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
 
+/* Actions zone */
 .header-actions {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
-  flex-shrink: 0; /* never shrink actions - they stay on one line */
+  flex-wrap: nowrap; /* Keep all actions on one line */
 }
 
 .scheduler-status {
@@ -489,33 +538,34 @@ pre {
   flex-shrink: 0;
 }
 
-/* Scan progress panel - separate row when active on desktop */
-.scan-progress-panel.desktop-active {
-  position: absolute;
-  top: 100%;
-  left: var(--gutter);
-  right: var(--gutter-right);
-  max-width: var(--container-max);
-  margin: 0 auto;
-  z-index: 99;
-  border-top: none;
-  border-radius: 0 0 var(--radius-md) var(--radius-md);
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+/* Scan progress panel - inline in actions zone when active */
+.scan-progress-panel {
+  display: none; /* Hidden by default, shown via JS when scan active */
 }
 
+.scan-progress-panel.visible {
+  display: flex;
+}
+
+/* Mobile responsive */
 @media (max-width: 768px) {
   .header-container {
-    justify-content: center;
-    text-align: center;
+    justify-content: space-between;
+    gap: var(--space-sm);
   }
-  .brand { order: 1; }
-  .app-nav { order: 3; width: 100%; justify-content: center; flex: 1 1 100%; }
-  .header-actions { order: 2; width: 100%; justify-content: center; flex-wrap: wrap; }
-  .scan-progress-panel.desktop-active {
-    position: static;
-    box-shadow: none;
-    border-radius: var(--radius-md);
-    margin: var(--space-xs) var(--gutter) 0;
+  .header-zone--nav {
+    order: 3;
+    width: 100%;
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+  .header-zone--actions {
+    order: 2;
+    width: auto;
+    flex-shrink: 0;
+  }
+  .header-zone--brand {
+    order: 1;
   }
 }
 
@@ -526,6 +576,7 @@ pre {
   .btn-manual-scan span { display: none; }
   .scheduler-status { flex-direction: column; gap: var(--space-xxs); align-items: center; }
   .scheduler-eta { font-size: var(--text-caption); }
+  .scan-progress-panel { display: none !important; }
 }
 
 .brand {
@@ -1775,15 +1826,19 @@ pre {
 /* === REDUCED MOTION === */
 /* === SCAN PROGRESS PANEL (Day 2) === */
 .scan-progress-panel {
-  display: flex;
+  display: none; /* Hidden by default, shown via JS when scan active */
   align-items: center;
   gap: var(--space-sm);
   padding: var(--space-xxs) var(--space-sm);
   background: var(--color-surface-2);
   border: 1px solid var(--color-hairline);
   border-radius: var(--radius-md);
-  min-width: 280px;
-  max-width: 400px;
+  min-width: 320px;
+  max-width: 500px;
+}
+
+.scan-progress-panel.visible {
+  display: flex;
 }
 
 .scan-progress-bar {
@@ -1805,18 +1860,18 @@ pre {
 .scan-progress-phases {
   display: flex;
   gap: var(--space-xxs);
+  flex-wrap: wrap;
 }
 
 .phase-pill {
-  font-family: var(--font-mono);
+  font-family: var(--font-text);
   font-size: var(--text-caption);
-  font-weight: var(--weight-mono);
+  font-weight: 500;
   color: var(--color-ink-tertiary);
-  padding: var(--space-xxs) var(--space-xxs);
+  padding: var(--space-xxs) var(--space-xs);
   border-radius: var(--radius-sm);
   transition: all var(--transition-fast);
-  min-width: 28px;
-  text-align: center;
+  white-space: nowrap;
 }
 
 .phase-pill.completed {
@@ -1834,13 +1889,13 @@ pre {
   font-family: var(--font-mono);
   font-size: var(--text-caption);
   color: var(--color-ink-subtle);
-  min-width: 160px;
+  min-width: 140px;
   text-align: right;
 }
 
 @media (max-width: 768px) {
   .scan-progress-panel {
-    min-width: 200px;
+    min-width: 240px;
     max-width: none;
   }
   .scan-progress-label {
@@ -1850,7 +1905,7 @@ pre {
 
 @media (max-width: 480px) {
   .scan-progress-panel {
-    display: none;
+    display: none !important;
   }
 }
 

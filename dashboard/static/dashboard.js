@@ -425,18 +425,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Handle scan progress panel responsive class
-    window.addEventListener('resize', () => {
-        const panel = document.getElementById('scan-progress-panel');
-        if (panel && panel.classList.contains('desktop-active')) {
-            if (window.innerWidth <= 768) {
-                panel.classList.remove('desktop-active');
-            }
-        } else if (panel && panel.style.display === 'flex' && window.innerWidth > 768) {
-            panel.classList.add('desktop-active');
-        }
-    });
-
+    
     // Clean up skeleton loaders after first successful poll
     setTimeout(() => {
         removeSkeletons('entities-table', '.metrics-grid');
@@ -477,19 +466,12 @@ function updateScanProgressPanel(progress) {
     const pct = progress.progress || 0;
 
     if (phase === 'idle') {
-        panel.style.display = 'none';
-        panel.classList.remove('desktop-active');
+        panel.classList.remove('visible');
         stopScanProgressPolling();
         return;
     }
 
-    panel.style.display = 'flex';
-    // On desktop (>768px), show as overlay row below header
-    if (window.innerWidth > 768) {
-        panel.classList.add('desktop-active');
-    } else {
-        panel.classList.remove('desktop-active');
-    }
+    panel.classList.add('visible');
     fill.style.width = `${pct}%`;
     fill.setAttribute('aria-valuenow', pct);
 

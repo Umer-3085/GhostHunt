@@ -7,23 +7,27 @@
 {% block content %}
 <div class="detail-view">
     <div class="detail-header">
-        <a href="/" class="btn btn-secondary btn-sm">← Back to Dashboard</a>
-        <div class="header-titles">
-            {% if is_system %}
-            <h1>System Persistence Findings (Scan #{{ scan_id }})</h1>
-            <p class="subtitle">Dormant persistence entities (registry autoruns, scheduled tasks, Windows services) lacking active PIDs.</p>
-            {% else %}
-            <h1>Process Forensic Evidence: <span class="text-accent">{{ entity.process_name if entity else 'PID ' ~ pid }}</span></h1>
-            <p class="subtitle">Process ID: <code>{{ pid }}</code> • Scan Cycle: <code>#{{ scan_id }}</code></p>
+        <div class="detail-header-top">
+            <a href="/" class="btn btn-secondary btn-sm">← Back to Dashboard</a>
+            {% if entity %}
+            <div class="entity-score-badge">
+                <span class="badge badge-severity badge-{{ entity.risk_level|lower }}">
+                    {{ entity.risk_level }} (Score: {{ "%.2f"|format(entity.score) }})
+                </span>
+            </div>
             {% endif %}
         </div>
-        {% if entity %}
-        <div class="entity-score-badge">
-            <span class="badge badge-severity badge-{{ entity.risk_level|lower }}">
-                {{ entity.risk_level }} (Score: {{ "%.2f"|format(entity.score) }})
-            </span>
+        <div class="detail-header-main">
+            <div class="header-titles">
+                {% if is_system %}
+                <h1>System Persistence Findings (Scan #{{ scan_id }})</h1>
+                <p class="subtitle">Dormant persistence entities (registry autoruns, scheduled tasks, Windows services) lacking active PIDs.</p>
+                {% else %}
+                <h1>Process Forensic Evidence: <span class="text-accent">{{ entity.process_name if entity else 'PID ' ~ pid }}</span></h1>
+                <p class="subtitle">Process ID: <code>{{ pid }}</code> • Scan Cycle: <code>#{{ scan_id }}</code></p>
+                {% endif %}
+            </div>
         </div>
-        {% endif %}
     </div>
 
     <!-- 1. Threat Evidence Section (score_eligible == 1) -->

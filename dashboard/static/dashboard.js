@@ -1,8 +1,10 @@
 /**
  * GhostHunt — Dashboard Client Script
  * Implements 5s asynchronous polling, manual scan trigger, HTTP 409 conflict handling,
- * and baseline review & reset actions with CSRF protection.
+ * live entity search & severity filtering, and baseline review & reset actions with CSRF protection.
  */
+
+let currentSeverityFilter = 'ALL';
 
 // Retrieve CSRF token from page meta tag
 function getCsrfToken() {
@@ -17,13 +19,19 @@ function showToast(message, type = 'info', durationMs = 4000) {
 
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
-    
+
     let icon = 'ℹ️';
     if (type === 'success') icon = '✓';
     if (type === 'warning') icon = '⚠️';
     if (type === 'danger') icon = '✕';
 
-    toast.innerHTML = `<span>${icon}</span> <span>${message}</span>`;
+    const iconSpan = document.createElement('span');
+    iconSpan.textContent = icon;
+    const msgSpan = document.createElement('span');
+    msgSpan.textContent = message;
+
+    toast.appendChild(iconSpan);
+    toast.appendChild(msgSpan);
     container.appendChild(toast);
 
     setTimeout(() => {
@@ -34,29 +42,55 @@ function showToast(message, type = 'info', durationMs = 4000) {
     }, durationMs);
 }
 
-// Filter entities table by severity
-function filterEntities(severity, buttonElement) {
-    const buttons = document.querySelectorAll('.btn-filter');
-    buttons.forEach(btn => btn.classList.remove('active'));
-    if (buttonElement) buttonElement.classList.add('active');
-
+// Combined severity + search filter for entities table
+function applyEntityFilters() {
+    const searchInput = document.getElementById('entity-search');
+    const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
     const rows = document.querySelectorAll('.entity-row');
+    let visibleCount = 0;
+
     rows.forEach(row => {
         const rowSeverity = row.getAttribute('data-severity');
-        if (severity === 'ALL' || rowSeverity === severity) {
+        const rowSearch = row.getAttribute('data-search') || row.textContent.toLowerCase();
+        const matchesSeverity = currentSeverityFilter === 'ALL' || rowSeverity === currentSeverityFilter;
+        const matchesSearch = !query || rowSearch.includes(query);
+
+        if (matchesSeverity && matchesSearch) {
             row.style.display = '';
+            visibleCount++;
         } else {
             row.style.display = 'none';
         }
     });
+
+    const countBadge = document.getElementById('visible-entity-count');
+    if (countBadge) {
+        countBadge.textContent = `${visibleCount} ${visibleCount === 1 ? 'entity' : 'entities'}`;
+    }
 }
+
+// Filter entities table by severity
+function filterEntities(severity, buttonElement) {
+    currentSeverityFilter = severity;
+    const buttons = document.querySelectorAll('.btn-filter');
+    buttons.forEach(btn => btn.classList.remove('active'));
+    if (buttonElement) buttonElement.classList.add('active');
+    applyEntityFilters();
+}
+
+const SCAN_BTN_IDLE_HTML = `
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+    </svg>
+    <span>Run Scan</span>
+`;
 
 // Trigger manual scan cycle
 async function triggerManualScan() {
     const btn = document.getElementById('btn-manual-scan');
     if (btn) {
         btn.disabled = true;
-        btn.innerHTML = '<span class="btn-icon">⏳</span> Scanning...';
+        btn.innerHTML = '<span class="spin">⟳</span> <span>Scanning...</span>';
     }
 
     try {
@@ -85,7 +119,7 @@ async function triggerManualScan() {
     } finally {
         if (btn) {
             btn.disabled = false;
-            btn.innerHTML = '<span class="btn-icon">⚡</span> Run Scan';
+            btn.innerHTML = SCAN_BTN_IDLE_HTML;
         }
     }
 }
@@ -165,7 +199,7 @@ async function pollStatus() {
         if (!response.ok) return;
 
         const data = await response.json();
-        
+
         // Update scheduler status indicator
         const schedIndicator = document.getElementById('scheduler-indicator');
         if (schedIndicator && data.scheduler) {
@@ -195,10 +229,14 @@ async function pollStatus() {
     }
 }
 
-// Start 5s interval on DOM load
+// Start 5s interval and keyboard shortcuts on DOM load
 document.addEventListener('DOMContentLoaded', () => {
-    // Initial poll
     pollStatus();
-    // Poll every 5 seconds
     setInterval(pollStatus, 5000);
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            closeResetModal();
+        }
+    });
 });

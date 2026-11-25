@@ -164,8 +164,16 @@ async function runSimulation(scenarioId) {
                 badge.innerText = passed === results.length ? 'ALL PASSED' : `${results.length - passed} FAILED`;
             }
         }
+        if (typeof showToast === 'function') {
+            showToast(
+                `Simulations finished: ${passed}/${results.length} passed (${Math.round(totalDuration)} ms)`,
+                passed === results.length ? 'success' : 'warning'
+            );
+        }
     } catch (err) {
-        alert('Simulation execution error: ' + err.message);
+        if (typeof showToast === 'function') {
+            showToast('Simulation execution error: ' + err.message, 'danger');
+        }
     } finally {
         if (btnAll) btnAll.disabled = false;
     }

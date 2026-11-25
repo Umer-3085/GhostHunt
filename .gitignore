@@ -13,3 +13,5 @@ venv/
 env/
 .env
 *.tmp
+AGENTS.md
+DESIGN.md

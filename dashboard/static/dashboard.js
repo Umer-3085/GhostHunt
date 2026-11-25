@@ -262,11 +262,13 @@ function showTableSkeleton(tableId, rowCount = 5, colCount = 7) {
 function showCardSkeleton(cardSelector, count = 4) {
     const container = document.querySelector(cardSelector);
     if (!container) return;
-    container.innerHTML = '';
-    for (let i = 0; i < count; i++) {
-        const div = document.createElement('div');
-        div.className = 'skeleton-card';
-        container.appendChild(div);
+    // Only add skeletons if container is empty (initial load)
+    if (container.children.length === 0) {
+        for (let i = 0; i < count; i++) {
+            const div = document.createElement('div');
+            div.className = 'skeleton-card';
+            container.appendChild(div);
+        }
     }
 }
 

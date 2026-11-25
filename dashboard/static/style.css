@@ -468,7 +468,7 @@ pre {
   padding: var(--space-xxs);
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-hairline);
-  flex: 1;
+  flex: 1 1 480px; /* grow, shrink, minimum 480px - ensures nav always has space */
   justify-content: center;
   min-width: 0;
   overflow-x: auto;
@@ -479,7 +479,28 @@ pre {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
+  flex-shrink: 0; /* never shrink actions - they stay on one line */
+}
+
+.scheduler-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
   flex-shrink: 0;
+}
+
+/* Scan progress panel - separate row when active on desktop */
+.scan-progress-panel.desktop-active {
+  position: absolute;
+  top: 100%;
+  left: var(--gutter);
+  right: var(--gutter-right);
+  max-width: var(--container-max);
+  margin: 0 auto;
+  z-index: 99;
+  border-top: none;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
 }
 
 @media (max-width: 768px) {
@@ -488,8 +509,14 @@ pre {
     text-align: center;
   }
   .brand { order: 1; }
-  .app-nav { order: 3; width: 100%; justify-content: center; }
+  .app-nav { order: 3; width: 100%; justify-content: center; flex: 1 1 100%; }
   .header-actions { order: 2; width: 100%; justify-content: center; flex-wrap: wrap; }
+  .scan-progress-panel.desktop-active {
+    position: static;
+    box-shadow: none;
+    border-radius: var(--radius-md);
+    margin: var(--space-xs) var(--gutter) 0;
+  }
 }
 
 @media (max-width: 480px) {
@@ -497,6 +524,8 @@ pre {
   .nav-link { padding: var(--space-xxs) var(--space-xs); font-size: var(--text-caption); }
   .header-actions { gap: var(--space-xs); }
   .btn-manual-scan span { display: none; }
+  .scheduler-status { flex-direction: column; gap: var(--space-xxs); align-items: center; }
+  .scheduler-eta { font-size: var(--text-caption); }
 }
 
 .brand {

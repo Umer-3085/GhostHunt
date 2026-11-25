@@ -34,13 +34,15 @@
             </nav>
 
             <div class="header-actions">
-                <div class="scheduler-badge {% if scheduler_running %}running{% else %}idle{% endif %}" id="scheduler-indicator" title="In-process background scheduler status">
-                    <span class="dot"></span>
-                    <span class="label">Scheduler: {% if scheduler_running %}ACTIVE{% else %}STANDBY{% endif %}</span>
+                <div class="scheduler-status" id="scheduler-status">
+                    <div class="scheduler-badge {% if scheduler_running %}running{% else %}idle{% endif %}" id="scheduler-indicator" title="In-process background scheduler status">
+                        <span class="dot"></span>
+                        <span class="label">Scheduler: {% if scheduler_running %}ACTIVE{% else %}STANDBY{% endif %}</span>
+                    </div>
+                    <div class="scheduler-eta" id="scheduler-eta" title="Time until next automated scan">Next scan in: —</div>
                 </div>
-                <div class="scheduler-eta" id="scheduler-eta" title="Time until next automated scan">Next scan in: —</div>
 
-                <!-- Scan Progress Panel -->
+                <!-- Scan Progress Panel (appears below header on mobile, inline on desktop when active) -->
                 <div class="scan-progress-panel" id="scan-progress-panel" aria-live="polite" style="display:none;">
                     <div class="scan-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
                         <div class="scan-progress-fill" id="scan-progress-fill" style="width: 0%"></div>

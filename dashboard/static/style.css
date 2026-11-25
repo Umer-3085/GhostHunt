@@ -117,7 +117,6 @@
 
   /* === LAYOUT === */
   --container-max: 1200px;
-  --header-height: 56px;
   --gutter: max(16px, env(safe-area-inset-left, 0px));
   --gutter-right: max(16px, env(safe-area-inset-right, 0px));
 
@@ -130,9 +129,97 @@
   --focus-ring: 0 0 0 2px var(--color-primary-focus);
 }
 
-/* Force dark color scheme — no light mode */
+/* Color scheme — defaults to dark, respects system preference and explicit toggle */
 :root {
   color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+/* === LIGHT THEME TOKENS === */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    /* Canvas & Surfaces */
+    --color-canvas: #fafafa;
+    --color-surface-1: #ffffff;
+    --color-surface-2: #f4f4f5;
+    --color-surface-3: #e4e4e7;
+    --color-surface-4: #d4d4d8;
+
+    /* Hairlines */
+    --color-hairline: #d4d4d8;
+    --color-hairline-strong: #a1a1aa;
+    --color-hairline-tertiary: #71717a;
+
+    /* Text / Ink */
+    --color-ink: #18181b;
+    --color-ink-muted: #3f3f46;
+    --color-ink-subtle: #71717a;
+    --color-ink-tertiary: #a1a1aa;
+
+    /* Primary Accent */
+    --color-primary: #5e6ad2;
+    --color-primary-hover: #4c5ad6;
+    --color-primary-focus: #4c5ad6;
+    --color-on-primary: #ffffff;
+
+    /* Risk Scale (light mode — slightly more saturated for contrast on white) */
+    --color-risk-low: #166534;
+    --color-risk-low-bg: #dcfce7;
+    --color-risk-medium: #854d0e;
+    --color-risk-medium-bg: #fef3c7;
+    --color-risk-high: #991b1b;
+    --color-risk-high-bg: #fee2e2;
+
+    /* Scrollbar */
+    --scrollbar-track: var(--color-canvas);
+    --scrollbar-thumb: var(--color-hairline-strong);
+    --scrollbar-thumb-hover: var(--color-hairline-tertiary);
+  }
+}
+:root[data-theme="light"] {
+  /* Canvas & Surfaces */
+  --color-canvas: #fafafa;
+  --color-surface-1: #ffffff;
+  --color-surface-2: #f4f4f5;
+  --color-surface-3: #e4e4e7;
+  --color-surface-4: #d4d4d8;
+
+  /* Hairlines */
+  --color-hairline: #d4d4d8;
+  --color-hairline-strong: #a1a1aa;
+  --color-hairline-tertiary: #71717a;
+
+  /* Text / Ink */
+  --color-ink: #18181b;
+  --color-ink-muted: #3f3f46;
+  --color-ink-subtle: #71717a;
+  --color-ink-tertiary: #a1a1aa;
+
+  /* Primary Accent */
+  --color-primary: #5e6ad2;
+  --color-primary-hover: #4c5ad6;
+  --color-primary-focus: #4c5ad6;
+  --color-on-primary: #ffffff;
+
+  /* Risk Scale (light mode) */
+  --color-risk-low: #166534;
+  --color-risk-low-bg: #dcfce7;
+  --color-risk-medium: #854d0e;
+  --color-risk-medium-bg: #fef3c7;
+  --color-risk-high: #991b1b;
+  --color-risk-high-bg: #fee2e2;
+
+  /* Scrollbar */
+  --scrollbar-track: var(--color-canvas);
+  --scrollbar-thumb: var(--color-hairline-strong);
+  --scrollbar-thumb-hover: var(--color-hairline-tertiary);
 }
 
 /* === RESET & BASE === */
@@ -180,14 +267,14 @@ body {
   height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--color-canvas);
+  background: var(--scrollbar-track, var(--color-canvas));
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--color-hairline-strong);
+  background: var(--scrollbar-thumb, var(--color-hairline-strong));
   border-radius: var(--radius-pill);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-hairline-tertiary);
+  background: var(--scrollbar-thumb-hover, var(--color-hairline-tertiary));
 }
 
 /* === TYPE HELPERS === */
@@ -349,17 +436,16 @@ pre {
   position: sticky;
   top: 0;
   z-index: 100;
-  height: var(--header-height);
   background: var(--color-canvas);
   border-bottom: 1px solid var(--color-hairline);
   backdrop-filter: blur(8px);
+  padding: var(--space-sm) 0;
 }
 
 .header-container {
   max-width: var(--container-max);
   margin: 0 auto;
   padding: 0 var(--gutter) 0 var(--gutter-right);
-  height: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1305,6 +1391,12 @@ pre {
   justify-content: center;
   z-index: 1000;
   padding: var(--space-md);
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .modal-overlay,
+  :root[data-theme="light"] .modal-overlay {
+    background: rgba(24, 24, 27, 0.6);
+  }
 }
 
 .modal-overlay.hidden {

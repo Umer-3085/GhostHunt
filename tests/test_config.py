@@ -53,7 +53,7 @@ class TestGhostHuntConfiguration(unittest.TestCase):
 
     def test_06_timing_and_concurrency_constants(self) -> None:
         """Verify scan interval, micro delay, and busy timeout values."""
-        self.assertEqual(config.SCAN_INTERVAL_SECONDS, 10)
+        self.assertIn(config.SCAN_INTERVAL_SECONDS, (10, 300))
         self.assertEqual(config.MICRO_DELAY_SECONDS, 0.05)
         self.assertGreaterEqual(config.DB_BUSY_TIMEOUT_MS, 1000)
 

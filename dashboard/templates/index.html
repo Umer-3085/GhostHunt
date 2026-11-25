@@ -29,6 +29,9 @@
             <button type="button" class="btn btn-success" onclick="acceptBaseline()">
                 ✓ Accept Baseline
             </button>
+            <a href="#baseline-card" class="btn btn-secondary" onclick="document.getElementById('baseline-card')?.scrollIntoView({behavior:'smooth'}); return false;">
+                Inspect Candidates ↓
+            </a>
             <button type="button" class="btn btn-danger" onclick="confirmResetBaseline()">
                 ↺ Reset All
             </button>
@@ -38,56 +41,73 @@
 
     <!-- 2. Metric Summary Cards -->
     {% if latest_scan_id is not none %}
-    <section class="metrics-grid">
-        <div class="metric-card">
+    <section class="metrics-grid" id="metrics-grid">
+        <div class="metric-card" id="metric-scan">
             <div class="metric-top">
                 <div class="metric-title">Latest Completed Scan</div>
                 <span class="metric-icon" aria-hidden="true">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                 </span>
             </div>
-            <div class="metric-value">#{{ scan.id }}</div>
-            <div class="metric-footer">{{ scan.scan_time or scan.completed_at }} • {{ "%.1f"|format(scan.scan_duration_ms or scan.duration_ms or 0) }} ms</div>
+            <div class="metric-value" id="metric-scan-id">#{{ scan.id }}</div>
+            <div class="metric-footer" id="metric-scan-time">{{ scan.scan_time or scan.completed_at }} • {{ "%.1f"|format(scan.scan_duration_ms or scan.duration_ms or 0) }} ms</div>
         </div>
-        <div class="metric-card metric-threat">
+        <div class="metric-card metric-threat" id="metric-high">
             <div class="metric-top">
                 <div class="metric-title">High Risk Entities</div>
                 <span class="metric-icon text-danger" aria-hidden="true">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                 </span>
             </div>
-            <div class="metric-value text-danger">{{ high_count }}</div>
+            <div class="metric-value text-danger" id="metric-high-count">{{ high_count }}</div>
             <div class="metric-footer">Score ≥ 0.60 (Multi-Signal Breach)</div>
         </div>
-        <div class="metric-card metric-medium">
+        <div class="metric-card metric-medium" id="metric-med">
             <div class="metric-top">
                 <div class="metric-title">Medium Risk Entities</div>
                 <span class="metric-icon text-warning" aria-hidden="true">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                 </span>
             </div>
-            <div class="metric-value text-warning">{{ med_count }}</div>
-            <div class="metric-footer">0.40 ≤ Score < 0.60</div>
+            <div class="metric-value text-warning" id="metric-med-count">{{ med_count }}</div>
+            <div class="metric-footer">0.40 ≤ Score &lt; 0.60</div>
         </div>
-        <div class="metric-card metric-low">
+        <div class="metric-card metric-low" id="metric-low">
             <div class="metric-top">
                 <div class="metric-title">Low Risk / Clean</div>
                 <span class="metric-icon text-success" aria-hidden="true">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                 </span>
             </div>
-            <div class="metric-value text-success">{{ low_count }}</div>
-            <div class="metric-footer">Score < 0.40</div>
+            <div class="metric-value text-success" id="metric-low-count">{{ low_count }}</div>
+            <div class="metric-footer">Score &lt; 0.40</div>
         </div>
-        <div class="metric-card metric-evidence">
+        <div class="metric-card metric-evidence" id="metric-evidence">
             <div class="metric-top">
                 <div class="metric-title">Forensic Evidence</div>
                 <span class="metric-icon" aria-hidden="true">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                 </span>
             </div>
-            <div class="metric-value">{{ threat_count }} <span class="metric-subval">threats</span></div>
-            <div class="metric-footer">{{ diag_count }} operational diagnostics isolated</div>
+            <div class="metric-value" id="metric-threat-count">{{ threat_count }} <span class="metric-subval">threats</span></div>
+            <div class="metric-footer" id="metric-diag-count">{{ diag_count }} operational diagnostics isolated</div>
+        </div>
+    </section>
+
+    <!-- 2b. Scheduler Mini-Timeline Card -->
+    <section class="card scheduler-timeline-card" id="scheduler-timeline-card">
+        <div class="card-header">
+            <div class="card-header-title">
+                <h2 class="card-title">Scheduler Activity Timeline</h2>
+                <span class="badge badge-secondary" id="sched-timeline-interval">Every {% if scheduler_running %}{{ config_interval_seconds|default('—') }}s{% else %}—{% endif %}</span>
+            </div>
+            <div class="sched-timeline-eta-wrap">
+                <span class="sched-timeline-next" id="sched-timeline-next">Loading…</span>
+            </div>
+        </div>
+        <div class="sched-timeline-dots" id="sched-timeline-dots" aria-label="Last 5 scan results timeline">
+            <!-- Populated via JS from /api/scans/recent -->
+            <div class="sched-timeline-empty text-tertiary">Loading scan history…</div>
         </div>
     </section>
 
@@ -143,10 +163,12 @@
                         <th style="width: 120px; text-align: right;">Forensics</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="entities-tbody">
                     {% for ent in entities %}
                     <tr class="process-row entity-row severity-{{ ent.risk_level|lower }}"
                         data-severity="{{ ent.risk_level }}"
+                        data-pid="{{ ent.pid if ent.pid is not none else '' }}"
+                        data-score="{{ ent.score }}"
                         data-search="{{ (ent.process_name ~ ' ' ~ (ent.pid if ent.pid is not none else '') ~ ' ' ~ (ent.signals_triggered or ''))|lower }}">
                         <td>
                             <span class="badge badge-severity badge-{{ ent.risk_level|lower }}">
@@ -155,9 +177,9 @@
                         </td>
                         <td>
                             <div class="score-container">
-                                <span class="score-num font-mono">{{ "%.2f"|format(ent.score) }}</span>
+                                <span class="score-num font-mono">{{ "%.2f"|format(ent.score or 0.0) }}</span>
                                 <div class="score-bar-bg">
-                                    <div class="score-bar-fill fill-{{ ent.risk_level|lower }}" style="width: {{ (ent.score * 100)|int }}%;"></div>
+                                    <div class="score-bar-fill fill-{{ ent.risk_level|lower }}" style="width: {{ ((ent.score or 0.0) * 100)|int }}%;"></div>
                                 </div>
                             </div>
                         </td>
@@ -183,7 +205,7 @@
                             {% endif %}
                         </td>
                         <td>
-                            <span class="badge badge-entity-type">{{ ent.item_key.split(':')[0]|upper }}</span>
+                            <span class="badge badge-entity-type">{{ (ent.item_key.split(':')[0] if ent.item_key else 'ENTITY')|upper }}</span>
                         </td>
                         <td style="text-align: right;">
                             {% if ent.pid is not none %}
@@ -221,7 +243,7 @@
     {% endif %}
 
     <!-- 5. Persistence Baseline Lifecycle Management Panel -->
-    <section class="card baseline-card">
+    <section class="card baseline-card" id="baseline-card">
         <div class="card-header">
             <div class="card-header-title">
                 <h2 class="card-title">Persistence Reference Baselines</h2>
@@ -248,8 +270,13 @@
                 </thead>
                 <tbody>
                     {% for cat, meta in baseline_meta.items() %}
-                    <tr class="process-row">
-                        <td class="font-bold">{{ cat|upper }}</td>
+                    <tr class="process-row baseline-category-row" data-category="{{ cat }}">
+                        <td>
+                            <button type="button" class="btn-baseline-expand baseline-expand-btn" data-cat="{{ cat }}" aria-expanded="false" aria-label="Show diff for {{ cat }}">
+                                <svg class="expand-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+                            </button>
+                            <strong>{{ cat|upper }}</strong>
+                        </td>
                         <td>
                             <span class="badge badge-state-{{ meta.state|lower }}">
                                 {{ meta.state }}
@@ -268,6 +295,15 @@
                             {% else %}
                             <span class="text-tertiary">—</span>
                             {% endif %}
+                        </td>
+                    </tr>
+                    <!-- Diff viewer row (expanded on click) -->
+                    <tr class="baseline-diff-row hidden" id="diff-{{ cat }}" aria-hidden="true">
+                        <td colspan="6" class="baseline-diff-cell">
+                            <div class="baseline-diff-loading">
+                                <span class="spin">⟳</span> Loading diff for {{ cat|upper }}…
+                            </div>
+                            <div class="baseline-diff-content" style="display:none;"></div>
                         </td>
                     </tr>
                     {% endfor %}
@@ -296,4 +332,266 @@
         </div>
     </div>
 </div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Scheduler mini-timeline
+async function loadSchedulerTimeline() {
+    try {
+        const res = await fetch('/api/scans/recent');
+        if (!res.ok) return;
+        const data = await res.json();
+        const scans = (data.scans || []).slice(0, 5).reverse(); // oldest first → newest right
+        const container = document.getElementById('sched-timeline-dots');
+        const nextEl = document.getElementById('sched-timeline-next');
+        if (!container) return;
+
+        if (scans.length === 0) {
+            container.innerHTML = '<div class="sched-timeline-empty text-tertiary">No completed scans yet</div>';
+            return;
+        }
+
+        const html = scans.map((s, i) => {
+            const isLast = i === scans.length - 1;
+            const statusClass = s.high_risk_count > 0 ? 'dot-high' : (s.status === 'COMPLETED' ? 'dot-ok' : 'dot-fail');
+            const dur = Number(s.scan_duration_ms || s.duration_ms || 0);
+            const findings = s.total_findings || 0;
+            const high = s.high_risk_count || 0;
+            const scanTime = s.scan_time || s.started_at || '';
+            const statusBadge = high > 0
+                ? `<span class="badge badge-severity badge-high">${high} HIGH</span>`
+                : (s.status === 'COMPLETED'
+                    ? `<span class="badge badge-severity badge-low">CLEAN</span>`
+                    : `<span class="badge badge-severity badge-failed">${s.status}</span>`);
+
+            return `
+                <div class="sched-dot-wrap ${isLast ? 'sched-dot-latest' : ''}">
+                    <div class="sched-dot ${statusClass}" 
+                         tabindex="0" 
+                         role="button" 
+                         aria-label="Scan #${s.id}: ${high > 0 ? high + ' High' : s.status}">
+                    </div>
+                    <span class="sched-dot-label">#${s.id}</span>
+                    <div class="sched-tooltip" role="tooltip">
+                        <div class="sched-tooltip-header">
+                            <span class="sched-tooltip-id">Scan #${s.id}</span>
+                            ${statusBadge}
+                        </div>
+                        <div class="sched-tooltip-grid">
+                            <div class="sched-tooltip-row">
+                                <span class="sched-tooltip-k">Duration</span>
+                                <span class="sched-tooltip-v">${dur.toFixed(1)} ms</span>
+                            </div>
+                            <div class="sched-tooltip-row">
+                                <span class="sched-tooltip-k">Findings</span>
+                                <span class="sched-tooltip-v">${findings}</span>
+                            </div>
+                            <div class="sched-tooltip-row">
+                                <span class="sched-tooltip-k">High Risk</span>
+                                <span class="sched-tooltip-v ${high > 0 ? 'text-danger font-bold' : ''}">${high}</span>
+                            </div>
+                        </div>
+                        <div class="sched-tooltip-footer">${scanTime ? escapeHtmlInline(scanTime) : 'Completed'}</div>
+                    </div>
+                </div>
+                ${i < scans.length - 1 ? '<div class="sched-timeline-line"></div>' : ''}
+            `;
+        }).join('');
+        container.innerHTML = html;
+
+        // Update ETA in timeline card
+        const statusRes = await fetch('/api/status');
+        if (!statusRes.ok) return;
+        const statusData = await statusRes.json();
+        if (nextEl && statusData.scheduler?.is_running) {
+            const interval = statusData.scheduler.interval_seconds || 300;
+            let lastMs = null;
+            if (statusData.latest_scan?.scan_time) {
+                lastMs = new Date(statusData.latest_scan.scan_time.replace(' ', 'T')).getTime();
+            } else if (statusData.scheduler.last_scan_time) {
+                lastMs = statusData.scheduler.last_scan_time * 1000;
+            }
+            if (lastMs) {
+                const remaining = Math.max(0, Math.round(interval - (Date.now() - lastMs) / 1000));
+                nextEl.textContent = remaining > 0 ? `Next in ${remaining}s` : 'Overdue';
+                nextEl.className = remaining === 0 ? 'sched-timeline-next text-warning' : 'sched-timeline-next';
+                // keep updating
+                setTimeout(() => {
+                    const r2 = Math.max(0, remaining - 1);
+                    if (nextEl) nextEl.textContent = r2 > 0 ? `Next in ${r2}s` : 'Overdue';
+                }, 1000);
+            }
+        } else if (nextEl) {
+            nextEl.textContent = 'Scheduler inactive';
+        }
+    } catch (e) { /* silent */ }
+}
+
+// Baseline diff viewer
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.baseline-expand-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const cat = btn.dataset.cat;
+            const diffRow = document.getElementById(`diff-${cat}`);
+            if (!diffRow) return;
+            const isOpen = !diffRow.classList.contains('hidden');
+            const icon = btn.querySelector('.expand-icon');
+
+            if (isOpen) {
+                diffRow.classList.add('hidden');
+                diffRow.setAttribute('aria-hidden', 'true');
+                btn.setAttribute('aria-expanded', 'false');
+                if (icon) icon.style.transform = '';
+                return;
+            }
+
+            diffRow.classList.remove('hidden');
+            diffRow.setAttribute('aria-hidden', 'false');
+            btn.setAttribute('aria-expanded', 'true');
+            if (icon) icon.style.transform = 'rotate(90deg)';
+
+            const loadingEl = diffRow.querySelector('.baseline-diff-loading');
+            const contentEl = diffRow.querySelector('.baseline-diff-content');
+
+            if (contentEl.dataset.loaded) {
+                // already loaded
+                loadingEl.style.display = 'none';
+                contentEl.style.display = '';
+                return;
+            }
+
+            try {
+                const diffRes = await fetch(`/api/baseline/diff?category=${cat}`);
+                if (!diffRes.ok) throw new Error(`HTTP ${diffRes.status}`);
+                const data = await diffRes.json();
+                const diff = data.diff || {};
+
+                const added = diff.added || [];
+                const removed = diff.removed || [];
+                const modified = diff.modified || [];
+                const unchanged = diff.unchanged || [];
+                const state = diff.state || '';
+                const counts = diff.counts || {};
+
+                let diffHtml = '<div class="baseline-diff-table">';
+
+                // If in CANDIDATE_REVIEW mode, highlight that these are pending reference trust
+                if (state === 'CANDIDATE_REVIEW') {
+                    diffHtml += `
+                        <div class="diff-candidate-notice" style="padding: var(--space-sm) var(--space-md); margin-bottom: var(--space-sm); background: rgba(217,164,65,0.08); border-left: 3px solid var(--color-risk-medium); border-radius: var(--radius-sm);">
+                            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:var(--space-sm);">
+                                <div>
+                                    <strong class="text-warning">Candidate Baseline Review (${counts.candidate_total || added.length} entries)</strong>
+                                    <p class="text-tertiary" style="margin:2px 0 0; font-size:var(--text-caption);">
+                                        Captured during initial enumeration. Review the discovered inventory below before establishing reference trust.
+                                    </p>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-success" onclick="acceptBaseline('${cat}')">
+                                    ✓ Accept ${cat.toUpperCase()} as Reference
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                if (added.length === 0 && removed.length === 0 && modified.length === 0 && unchanged.length === 0) {
+                    diffHtml += '<p class="text-tertiary" style="padding: var(--space-md);">No persistence entries detected for this category.</p>';
+                } else {
+                    if (added.length > 0) {
+                        const badgeLabel = state === 'CANDIDATE_REVIEW' ? `CANDIDATE ENTRIES (${added.length})` : `+${added.length} ADDED (NEW DEVIATIONS)`;
+                        diffHtml += `<div class="diff-section"><div class="diff-section-header"><span class="badge badge-diff-added">${badgeLabel}</span></div>`;
+                        added.forEach(e => {
+                            diffHtml += `
+                                <div class="diff-row diff-added" style="flex-direction:column; align-items:flex-start; margin-bottom:var(--space-xxs);">
+                                    <div style="display:flex; align-items:center; gap:var(--space-xs); width:100%;">
+                                        <span class="diff-sign">+</span>
+                                        <span class="diff-label font-mono font-bold" style="color:var(--color-ink);">${escapeHtmlInline(e.entry_key)}</span>
+                                    </div>
+                                    <div style="padding-left: 20px; font-size:var(--text-caption); width:100%;">
+                                        ${e.entry_value ? `<div class="text-tertiary font-mono" style="word-break:break-all; margin-top:2px;">Value: ${escapeHtmlInline(e.entry_value)}</div>` : ''}
+                                        ${e.fingerprint ? `<div class="text-tertiary font-mono" style="font-size:10px;">Hash: ${escapeHtmlInline(e.fingerprint.slice(0, 32))}…</div>` : ''}
+                                    </div>
+                                </div>
+                            `;
+                        });
+                        diffHtml += '</div>';
+                    }
+
+                    if (modified.length > 0) {
+                        diffHtml += `<div class="diff-section"><div class="diff-section-header"><span class="badge badge-diff-modified">~${modified.length} MODIFIED</span></div>`;
+                        modified.forEach(e => {
+                            diffHtml += `
+                                <div class="diff-row diff-modified" style="flex-direction:column; align-items:flex-start; margin-bottom:var(--space-xxs);">
+                                    <div style="display:flex; align-items:center; gap:var(--space-xs); width:100%;">
+                                        <span class="diff-sign">~</span>
+                                        <span class="diff-label font-mono font-bold">${escapeHtmlInline(e.entry_key)}</span>
+                                    </div>
+                                    <div style="padding-left: 20px; font-size:var(--text-caption); width:100%; display:grid; grid-template-columns:1fr 1fr; gap:var(--space-sm); margin-top:var(--space-xxs);">
+                                        <div>
+                                            <span class="text-tertiary font-mono">Accepted:</span>
+                                            <div class="font-mono text-danger" style="word-break:break-all;">${escapeHtmlInline(e.old_value || 'None')}</div>
+                                        </div>
+                                        <div>
+                                            <span class="text-tertiary font-mono">Current Candidate:</span>
+                                            <div class="font-mono text-warning" style="word-break:break-all;">${escapeHtmlInline(e.new_value || 'None')}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                        diffHtml += '</div>';
+                    }
+
+                    if (removed.length > 0) {
+                        diffHtml += `<div class="diff-section"><div class="diff-section-header"><span class="badge badge-diff-removed">-${removed.length} REMOVED (ABSENT FROM SYSTEM)</span></div>`;
+                        removed.forEach(e => {
+                            diffHtml += `
+                                <div class="diff-row diff-removed" style="flex-direction:column; align-items:flex-start; margin-bottom:var(--space-xxs);">
+                                    <div style="display:flex; align-items:center; gap:var(--space-xs); width:100%;">
+                                        <span class="diff-sign">-</span>
+                                        <span class="diff-label font-mono text-tertiary">${escapeHtmlInline(e.entry_key)}</span>
+                                    </div>
+                                    <div style="padding-left: 20px; font-size:var(--text-caption); width:100%;">
+                                        ${e.entry_value ? `<div class="text-tertiary font-mono" style="word-break:break-all;">Old Value: ${escapeHtmlInline(e.entry_value)}</div>` : ''}
+                                    </div>
+                                </div>
+                            `;
+                        });
+                        diffHtml += '</div>';
+                    }
+
+                    if (unchanged.length > 0) {
+                        diffHtml += `<div class="diff-section"><div class="diff-section-header"><span class="badge badge-secondary">${unchanged.length} UNCHANGED REFERENCE ENTRIES</span></div>`;
+                        unchanged.slice(0, 10).forEach(e => {
+                            diffHtml += `<div class="diff-row diff-unchanged"><span class="diff-sign"> </span><span class="diff-label font-mono text-tertiary">${escapeHtmlInline(e.entry_key)}</span></div>`;
+                        });
+                        if (unchanged.length > 10) diffHtml += `<div class="diff-row text-tertiary" style="padding-left: 24px;">… and ${unchanged.length - 10} more unchanged entries matching accepted baseline</div>`;
+                        diffHtml += '</div>';
+                    }
+                }
+                diffHtml += '</div>';
+
+                contentEl.innerHTML = diffHtml;
+                contentEl.dataset.loaded = '1';
+                loadingEl.style.display = 'none';
+                contentEl.style.display = '';
+            } catch (err) {
+                loadingEl.innerHTML = `<span class="text-danger">Failed to load diff: ${err.message}</span>`;
+            }
+        });
+    });
+
+    // Load scheduler timeline
+    loadSchedulerTimeline();
+    setInterval(loadSchedulerTimeline, 30000);
+});
+
+function escapeHtmlInline(text) {
+    const d = document.createElement('div');
+    d.textContent = text;
+    return d.innerHTML;
+}
+</script>
 {% endblock %}

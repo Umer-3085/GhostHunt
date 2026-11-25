@@ -1288,3 +1288,102 @@ def get_candidate_baseline(
         for r in rows:
             result[(r["entry_type"], r["entry_key"])] = dict(r)
         return result
+
+
+def compute_baseline_diff(
+    category: Optional[str] = None,
+    db_path: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Computes forensic baseline diff comparing accepted reference baseline (is_candidate = 0)
+    with candidate inventory (is_candidate = 1).
+    Categorizes entries into:
+      - ADDED: Entries present in candidate inventory but absent from accepted baseline.
+      - REMOVED: Entries present in accepted baseline but absent from candidate inventory.
+      - MODIFIED: Entries present in both with fingerprint or value changes.
+      - UNCHANGED: Entries identical in key, value, and fingerprint.
+    """
+    effective_db = db_path or config.DB_PATH
+    if category is not None and category not in VALID_CATEGORIES:
+        raise ValueError(f"Invalid category '{category}', must be one of {VALID_CATEGORIES}")
+
+    categories = [category] if category else list(VALID_CATEGORIES)
+    all_meta = get_all_baseline_meta(db_path=effective_db)
+
+    diff_results = {}
+    for cat in categories:
+        meta = all_meta.get(cat, {})
+        state = meta.get("baseline_state", "NOT_INITIALIZED")
+
+        candidates = get_candidate_baseline(category=cat, db_path=effective_db)
+        accepted = get_persistence_baseline(category=cat, only_accepted=True, db_path=effective_db)
+
+        cand_map = {k[1]: v for k, v in candidates.items()}
+        acc_map = {k[1]: v for k, v in accepted.items()}
+
+        added: List[Dict[str, Any]] = []
+        removed: List[Dict[str, Any]] = []
+        modified: List[Dict[str, Any]] = []
+        unchanged: List[Dict[str, Any]] = []
+
+        for key, cand in cand_map.items():
+            if key not in acc_map:
+                added.append({
+                    "entry_type": cat,
+                    "entry_key": key,
+                    "entry_value": cand.get("entry_value", ""),
+                    "fingerprint": cand.get("fingerprint", ""),
+                    "captured_at": cand.get("captured_at"),
+                })
+            else:
+                acc = acc_map[key]
+                val_changed = cand.get("entry_value") != acc.get("entry_value")
+                fp_changed = cand.get("fingerprint") != acc.get("fingerprint")
+                if val_changed or fp_changed:
+                    modified.append({
+                        "entry_type": cat,
+                        "entry_key": key,
+                        "old_value": acc.get("entry_value", ""),
+                        "new_value": cand.get("entry_value", ""),
+                        "old_fingerprint": acc.get("fingerprint", ""),
+                        "new_fingerprint": cand.get("fingerprint", ""),
+                        "captured_at": cand.get("captured_at"),
+                    })
+                else:
+                    unchanged.append({
+                        "entry_type": cat,
+                        "entry_key": key,
+                        "entry_value": cand.get("entry_value", ""),
+                        "fingerprint": cand.get("fingerprint", ""),
+                    })
+
+        for key, acc in acc_map.items():
+            if key not in cand_map:
+                removed.append({
+                    "entry_type": cat,
+                    "entry_key": key,
+                    "entry_value": acc.get("entry_value", ""),
+                    "fingerprint": acc.get("fingerprint", ""),
+                    "accepted_at": acc.get("accepted_at"),
+                })
+
+        diff_results[cat] = {
+            "category": cat,
+            "state": state,
+            "counts": {
+                "added": len(added),
+                "removed": len(removed),
+                "modified": len(modified),
+                "unchanged": len(unchanged),
+                "candidate_total": len(cand_map),
+                "accepted_total": len(acc_map),
+            },
+            "added": added,
+            "removed": removed,
+            "modified": modified,
+            "unchanged": unchanged,
+        }
+
+    if category:
+        return diff_results.get(category, {})
+    return diff_results

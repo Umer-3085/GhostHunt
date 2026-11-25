@@ -8,17 +8,52 @@
         <h1 class="display-md">🧪 Safe Malware-Behavior Simulations</h1>
         <p class="subtitle">Academic Detection Validation • Zero Kernel Modifications • Isolated Sandboxed Test DBs</p>
     </div>
-    <div style="margin-bottom: var(--space-lg);">
+
+    <!-- Run All button — ABOVE the table, with margin -->
+    <div class="simulations-actions" style="margin-bottom: var(--space-lg);">
         <button type="button" class="btn btn-primary" id="btn-run-all-scenarios" onclick="runSimulation('all')">
-            <span class="btn-icon">▶</span> Run All Scenarios
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+            <span>Run All Scenarios</span>
         </button>
+    </div>
+</div>
+
+<!-- Live Execution Progress Panel (hidden until "Run All" clicked) -->
+<div class="card simulation-exec-panel" id="simulation-exec-panel" style="display: none;" aria-live="polite">
+    <div class="card-header">
+        <div class="card-header-title">
+            <h2 class="card-title">Live Execution Progress</h2>
+            <span class="badge badge-running" id="exec-panel-badge">RUNNING</span>
+        </div>
+        <div class="sim-exec-counts">
+            <span class="sim-exec-stat text-success">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                <strong id="exec-passed-count">0</strong> passed
+            </span>
+            <span class="sim-exec-stat text-danger">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                <strong id="exec-failed-count">0</strong> failed
+            </span>
+        </div>
+    </div>
+    <div class="sim-exec-progress-bar-wrap">
+        <div class="sim-exec-progress-bar">
+            <div class="sim-exec-progress-fill" id="sim-exec-progress-fill" style="width: 0%;"></div>
+        </div>
+        <span class="sim-exec-progress-label" id="sim-exec-progress-label">Starting…</span>
+    </div>
+    <div class="sim-exec-current" id="sim-exec-current">
+        <span class="spin sim-exec-spinner" aria-hidden="true">⟳</span>
+        <span id="sim-exec-current-name">Preparing scenarios…</span>
     </div>
 </div>
 
 <div class="card info-banner">
     <div class="banner-icon">ℹ</div>
     <div class="banner-content">
-        <h3>Defensive Safety & Isolation Guarantee</h3>
+        <h3>Defensive Safety &amp; Isolation Guarantee</h3>
         <p>
             All simulation scenarios execute exclusively against dedicated, temporary SQLite databases and ephemeral test fixtures.
             Simulations validate detection mechanics (cross-view discrepancies, persistence diffing, Authenticode reconciliation, and risk correlation)
@@ -33,21 +68,21 @@
         <h2 class="card-title">Execution Results Summary</h2>
         <span class="badge" id="summary-status-badge">COMPLETED</span>
     </div>
-    <div class="metric-grid">
+    <div class="metrics-grid">
         <div class="metric-card">
-            <div class="metric-label">Total Executed</div>
+            <div class="metric-title">Total Executed</div>
             <div class="metric-value" id="summary-total">0</div>
         </div>
         <div class="metric-card">
-            <div class="metric-label">Passed</div>
+            <div class="metric-title">Passed</div>
             <div class="metric-value text-success" id="summary-passed">0</div>
         </div>
         <div class="metric-card">
-            <div class="metric-label">Failed</div>
+            <div class="metric-title">Failed</div>
             <div class="metric-value text-danger" id="summary-failed">0</div>
         </div>
         <div class="metric-card">
-            <div class="metric-label">Total Duration</div>
+            <div class="metric-title">Total Duration</div>
             <div class="metric-value" id="summary-duration">0 ms</div>
         </div>
     </div>
@@ -67,7 +102,7 @@
                     <th style="width: 120px;">Target Signal</th>
                     <th>Description</th>
                     <th style="width: 110px;">Type</th>
-                    <th style="width: 120px;">Status</th>
+                    <th style="width: 150px;">Status</th>
                     <th style="width: 100px;">Action</th>
                 </tr>
             </thead>
@@ -101,82 +136,148 @@
 </div>
 
 <script>
+const TOTAL_SCENARIOS = {{ scenarios|length }};
+
 async function runSimulation(scenarioId) {
     const btnAll = document.getElementById('btn-run-all-scenarios');
+    const execPanel = document.getElementById('simulation-exec-panel');
+    const execBadge = document.getElementById('exec-panel-badge');
+    const execFill = document.getElementById('sim-exec-progress-fill');
+    const execLabel = document.getElementById('sim-exec-progress-label');
+    const execCurrent = document.getElementById('sim-exec-current-name');
+    const passedCount = document.getElementById('exec-passed-count');
+    const failedCount = document.getElementById('exec-failed-count');
+
     if (btnAll) btnAll.disabled = true;
 
-    // Update status badge for target
-    if (scenarioId !== 'all') {
-        const badge = document.getElementById(`status-${scenarioId}`);
-        if (badge) badge.innerHTML = '<span class="badge badge-running">Running...</span>';
-    } else {
+    if (scenarioId === 'all') {
+        // Show live panel
+        if (execPanel) {
+            execPanel.style.display = 'block';
+            execPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+        if (execBadge) { execBadge.className = 'badge badge-running'; execBadge.textContent = 'RUNNING'; }
+        if (passedCount) passedCount.textContent = '0';
+        if (failedCount) failedCount.textContent = '0';
+        if (execFill) execFill.style.width = '0%';
+        if (execLabel) execLabel.textContent = 'Starting scenarios…';
+
+        // Set all rows to pending
         document.querySelectorAll('[id^="status-"]').forEach(el => {
-            el.innerHTML = '<span class="badge badge-running">Pending...</span>';
-        });
-    }
-
-    try {
-        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
-        const response = await fetch('/api/scenarios/run', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-Token': csrfToken
-            },
-            body: JSON.stringify({ scenario_id: scenarioId })
+            el.innerHTML = '<span class="badge badge-idle">Pending</span>';
         });
 
-        if (!response.ok) {
-            throw new Error(`Execution failed with status ${response.status}`);
+        // Kick off one-by-one execution via individual API calls
+        const rows = Array.from(document.querySelectorAll('[id^="row-"]'));
+        const scenarioIds = rows.map(r => r.id.replace('row-', ''));
+        let passed = 0, failed = 0, totalDuration = 0;
+
+        for (let i = 0; i < scenarioIds.length; i++) {
+            const sid = scenarioIds[i];
+            const statusEl = document.getElementById(`status-${sid}`);
+            const rowEl = document.getElementById(`row-${sid}`);
+            const nameEl = rowEl ? rowEl.querySelector('td:nth-child(2)') : null;
+            const name = nameEl ? nameEl.textContent.trim() : sid;
+
+            // Mark as running
+            if (statusEl) statusEl.innerHTML = '<span class="badge badge-running"><span class="spin">⟳</span> Running</span>';
+            if (execCurrent) execCurrent.textContent = `[${i+1}/${scenarioIds.length}] ${name}`;
+            if (execLabel) execLabel.textContent = `Running scenario ${i+1} of ${scenarioIds.length}…`;
+            const pct = Math.round((i / scenarioIds.length) * 100);
+            if (execFill) execFill.style.width = `${pct}%`;
+
+            try {
+                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+                const res = await fetch('/api/scenarios/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                    body: JSON.stringify({ scenario_id: sid })
+                });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                const r = Array.isArray(data.results) ? data.results[0] : data.results;
+                totalDuration += (r?.duration_ms || 0);
+
+                if (r?.passed) {
+                    passed++;
+                    if (statusEl) statusEl.innerHTML = `<span class="badge badge-success" title="${r.duration_ms || 0}ms">PASSED</span>`;
+                    if (rowEl) rowEl.classList.add('row-passed');
+                } else {
+                    failed++;
+                    if (statusEl) statusEl.innerHTML = `<span class="badge badge-danger" title="${r?.error || 'Failed'}">FAILED</span>`;
+                    if (rowEl) rowEl.classList.add('row-failed');
+                }
+            } catch (err) {
+                failed++;
+                if (statusEl) statusEl.innerHTML = `<span class="badge badge-danger" title="${err.message}">ERROR</span>`;
+            }
+
+            if (passedCount) passedCount.textContent = passed;
+            if (failedCount) failedCount.textContent = failed;
         }
 
-        const data = await response.json();
-        const results = Array.isArray(data.results) ? data.results : [data.results];
+        // Complete
+        if (execFill) execFill.style.width = '100%';
+        if (execLabel) execLabel.textContent = `Complete: ${passed} passed, ${failed} failed`;
+        if (execCurrent) execCurrent.textContent = '';
+        document.getElementById('sim-exec-current')?.classList.add('hidden');
+        if (execBadge) {
+            execBadge.className = failed === 0 ? 'badge badge-success' : 'badge badge-danger';
+            execBadge.textContent = failed === 0 ? 'ALL PASSED' : `${failed} FAILED`;
+        }
 
-        let passed = 0;
-        let totalDuration = 0;
-
-        results.forEach(r => {
-            const el = document.getElementById(`status-${r.scenario_id}`);
-            if (el) {
-                if (r.passed) {
-                    el.innerHTML = `<span class="badge badge-success" title="Duration: ${r.duration_ms}ms">PASSED (${r.duration_ms}ms)</span>`;
-                    passed++;
-                } else {
-                    el.innerHTML = `<span class="badge badge-danger" title="${r.error || 'Failed'}">FAILED</span>`;
-                }
-            }
-            totalDuration += (r.duration_ms || 0);
-        });
-
-        // Show Summary Card
+        // Show summary card
         const summaryCard = document.getElementById('simulation-summary-card');
         if (summaryCard) {
             summaryCard.style.display = 'block';
-            document.getElementById('summary-total').innerText = results.length;
-            document.getElementById('summary-passed').innerText = passed;
-            document.getElementById('summary-failed').innerText = results.length - passed;
-            document.getElementById('summary-duration').innerText = Math.round(totalDuration) + ' ms';
-
+            document.getElementById('summary-total').textContent = scenarioIds.length;
+            document.getElementById('summary-passed').textContent = passed;
+            document.getElementById('summary-failed').textContent = failed;
+            document.getElementById('summary-duration').textContent = Math.round(totalDuration) + ' ms';
             const badge = document.getElementById('summary-status-badge');
             if (badge) {
-                badge.className = passed === results.length ? 'badge badge-success' : 'badge badge-danger';
-                badge.innerText = passed === results.length ? 'ALL PASSED' : `${results.length - passed} FAILED`;
+                badge.className = passed === scenarioIds.length ? 'badge badge-success' : 'badge badge-danger';
+                badge.textContent = passed === scenarioIds.length ? 'ALL PASSED' : `${failed} FAILED`;
             }
         }
+
         if (typeof showToast === 'function') {
-            showToast(
-                `Simulations finished: ${passed}/${results.length} passed (${Math.round(totalDuration)} ms)`,
-                passed === results.length ? 'success' : 'warning'
-            );
+            showToast(`Simulations finished: ${passed}/${scenarioIds.length} passed (${Math.round(totalDuration)} ms)`,
+                passed === scenarioIds.length ? 'success' : 'warning');
         }
-    } catch (err) {
-        if (typeof showToast === 'function') {
-            showToast('Simulation execution error: ' + err.message, 'danger');
+
+    } else {
+        // Single scenario
+        const statusEl = document.getElementById(`status-${scenarioId}`);
+        if (statusEl) statusEl.innerHTML = '<span class="badge badge-running"><span class="spin">⟳</span> Running</span>';
+        try {
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+            const response = await fetch('/api/scenarios/run', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                body: JSON.stringify({ scenario_id: scenarioId })
+            });
+            if (!response.ok) throw new Error(`Execution failed with status ${response.status}`);
+            const data = await response.json();
+            const results = Array.isArray(data.results) ? data.results : [data.results];
+
+            results.forEach(r => {
+                const el = document.getElementById(`status-${r.scenario_id}`);
+                if (el) {
+                    if (r.passed) {
+                        el.innerHTML = `<span class="badge badge-success" title="${r.duration_ms}ms">PASSED (${r.duration_ms}ms)</span>`;
+                    } else {
+                        el.innerHTML = `<span class="badge badge-danger" title="${r.error || 'Failed'}">FAILED</span>`;
+                    }
+                }
+            });
+        } catch (err) {
+            if (statusEl) statusEl.innerHTML = '<span class="badge badge-danger">ERROR</span>';
+            if (typeof showToast === 'function') showToast('Simulation error: ' + err.message, 'danger');
         }
-    } finally {
-        if (btnAll) btnAll.disabled = false;
     }
+
+    if (btnAll) btnAll.disabled = false;
 }
 </script>
 {% endblock %}

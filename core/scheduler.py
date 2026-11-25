@@ -38,6 +38,7 @@ _SCAN_PROGRESS: Dict[str, Any] = {
     "progress": 0,    # 0-100
     "started_at": None,
     "updated_at": None,
+    "completed_at": None,
 }
 _SCAN_PROGRESS_LOCK = threading.Lock()
 
@@ -53,11 +54,22 @@ def _update_scan_progress(scan_id: Optional[int], phase: str, progress: int) -> 
             _SCAN_PROGRESS["started_at"] = time.time()
         if phase in ("complete", "idle"):
             _SCAN_PROGRESS["started_at"] = None
+        if phase == "complete":
+            _SCAN_PROGRESS["completed_at"] = time.time()
+        elif phase == "idle":
+            _SCAN_PROGRESS["completed_at"] = None
 
 
 def get_scan_progress() -> Dict[str, Any]:
-    """Return a copy of the current scan progress state."""
+    """Return a copy of the current scan progress state. Auto-resets to idle after completion grace period."""
     with _SCAN_PROGRESS_LOCK:
+        if _SCAN_PROGRESS.get("phase") == "complete":
+            comp_at = _SCAN_PROGRESS.get("completed_at")
+            if comp_at and (time.time() - comp_at > 3.0):
+                _SCAN_PROGRESS["phase"] = "idle"
+                _SCAN_PROGRESS["progress"] = 0
+                _SCAN_PROGRESS["started_at"] = None
+                _SCAN_PROGRESS["completed_at"] = None
         return dict(_SCAN_PROGRESS)
 
 
@@ -125,10 +137,23 @@ def execute_scan_cycle(
         _update_scan_progress(scan_id, "persistence", 50)
 
         # Step 4: Execute signature/module analysis
-        _update_scan_progress(scan_id, "signatures", 60)
+        _update_scan_progress(scan_id, "signatures", 50)
         sig_func = signature_runner or signatures_engine.run_scan
         try:
-            sig_findings = sig_func(scan_id=None, db_path=effective_db)
+            def _sig_cb(curr, total):
+                if total > 0:
+                    pct = 50 + int((curr / total) * 20)
+                    _update_scan_progress(scan_id, "signatures", min(pct, 70))
+
+            sig_kwargs = {"scan_id": None, "db_path": effective_db}
+            try:
+                import inspect
+                if "progress_callback" in inspect.signature(sig_func).parameters:
+                    sig_kwargs["progress_callback"] = _sig_cb
+            except Exception:
+                pass
+
+            sig_findings = sig_func(**sig_kwargs)
             all_findings.extend(sig_findings)
         except Exception as ex:
             raise RuntimeError(f"Signature analysis failed: {ex}") from ex
@@ -369,6 +394,44 @@ class ScanScheduler:
             }
         finally:
             self.operation_lock.release()
+
+    def trigger_manual_scan_async(self) -> Dict[str, Any]:
+        """
+        Triggers an immediate scan cycle asynchronously in a background thread.
+        Guarded by the shared operation lock with non-blocking check.
+        Returns immediate status: 'started' or 'busy'.
+        """
+        acquired = self.operation_lock.acquire(blocking=False)
+        if not acquired:
+            return {
+                "success": False,
+                "status": "busy",
+                "message": "Another operation (scan, reset, or acceptance) is currently in progress",
+                "scan_id": None,
+            }
+
+        _update_scan_progress(None, "process_views", 5)
+
+        def _worker():
+            try:
+                self.coordinator(db_path=self.db_path)
+            except Exception as ex:
+                logger.error("Async scan execution failed: %s", ex, exc_info=True)
+                _update_scan_progress(None, "idle", 0)
+            finally:
+                self.operation_lock.release()
+
+        t = threading.Thread(
+            target=_worker,
+            name="GhostHunt-AsyncManualScanThread",
+            daemon=True,
+        )
+        t.start()
+        return {
+            "success": True,
+            "status": "started",
+            "message": "Scan cycle initiated asynchronously",
+        }
 
     def execute_with_lock(
         self,

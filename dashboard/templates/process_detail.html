@@ -6,6 +6,7 @@
 
 {% block content %}
 <div class="detail-view">
+
     <div class="detail-header">
         <div class="detail-header-top">
             <a href="/" class="btn btn-secondary btn-sm">← Back to Dashboard</a>
@@ -34,7 +35,7 @@
     <section class="card evidence-card">
         <div class="card-header">
             <div class="card-header-title">
-                <h2>Threat Evidence ({{ threats|length }})</h2>
+                <h2 class="card-title">Threat Evidence ({{ threats|length }})</h2>
                 <span class="badge badge-threat">Contributes to Risk Score</span>
             </div>
         </div>
@@ -44,16 +45,16 @@
             {% for t in threats %}
             <div class="finding-item finding-threat">
                 <div class="finding-header">
-                    <span class="badge badge-signal badge-signal-{{ t.signal }}">
+                    <span class="signal-chip {{ t.signal|lower }}">
                         {{ t.signal|upper }}
                     </span>
                     <span class="badge badge-severity badge-{{ t.severity|lower }}">
                         {{ t.severity|upper }}
                     </span>
-                    <span class="finding-timestamp text-muted">{{ t.timestamp }}</span>
+                    <span class="finding-timestamp text-tertiary">{{ t.timestamp }}</span>
                 </div>
                 <div class="finding-body">
-                    <div class="finding-evidence-text">
+                    <div class="finding-evidence-text data-mono">
                         {{ t.evidence }}
                     </div>
                     {% if t.metadata %}
@@ -77,7 +78,7 @@
     <section class="card diagnostic-card">
         <div class="card-header">
             <div class="card-header-title">
-                <h2>Operational Diagnostics ({{ diagnostics|length }})</h2>
+                <h2 class="card-title">Operational Diagnostics ({{ diagnostics|length }})</h2>
                 <span class="badge badge-diagnostic">Score Eligible: 0.0 (Isolated)</span>
             </div>
         </div>
@@ -95,10 +96,10 @@
                 <div class="finding-header">
                     <span class="badge badge-secondary">{{ d.signal|upper }}</span>
                     <span class="badge badge-info">DIAGNOSTIC</span>
-                    <span class="finding-timestamp text-muted">{{ d.timestamp }}</span>
+                    <span class="finding-timestamp text-tertiary">{{ d.timestamp }}</span>
                 </div>
                 <div class="finding-body">
-                    <div class="finding-evidence-text font-mono">
+                    <div class="finding-evidence-text data-mono">
                         {{ d.evidence }}
                     </div>
                     {% if d.metadata %}

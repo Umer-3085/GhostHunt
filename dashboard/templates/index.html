@@ -8,7 +8,7 @@
     <!-- 1. Candidate Baseline Review Banner (when category in CANDIDATE_REVIEW) -->
     {% if has_candidate_review %}
     <div class="banner banner-warning">
-        <div class="banner-icon">⚠️</div>
+        <div class="banner-icon">⚠</div>
         <div class="banner-content">
             <h3>Candidate Baseline Review Required</h3>
             <p>
@@ -67,17 +67,17 @@
                 </span>
             </div>
             <div class="metric-value text-warning">{{ med_count }}</div>
-            <div class="metric-footer">0.40 ≤ Score &lt; 0.60</div>
+            <div class="metric-footer">0.40 ≤ Score < 0.60</div>
         </div>
         <div class="metric-card metric-low">
             <div class="metric-top">
                 <div class="metric-title">Low Risk / Clean</div>
-                <span class="metric-icon text-info" aria-hidden="true">
+                <span class="metric-icon text-success" aria-hidden="true">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                 </span>
             </div>
-            <div class="metric-value text-info">{{ low_count }}</div>
-            <div class="metric-footer">Score &lt; 0.40</div>
+            <div class="metric-value text-success">{{ low_count }}</div>
+            <div class="metric-footer">Score < 0.40</div>
         </div>
         <div class="metric-card metric-evidence">
             <div class="metric-top">
@@ -110,7 +110,7 @@
     <section class="card table-card">
         <div class="card-header">
             <div class="card-header-title">
-                <h2>Correlated Entities (Scan #{{ scan.id }})</h2>
+                <h2 class="card-title">Correlated Entities (Scan #{{ scan.id }})</h2>
                 <span class="count-badge" id="visible-entity-count">{{ entities|length }} entities</span>
             </div>
             <div class="table-controls">
@@ -124,7 +124,7 @@
                     <button type="button" class="btn-filter active" onclick="filterEntities('ALL', this)">All</button>
                     <button type="button" class="btn-filter text-danger" onclick="filterEntities('HIGH', this)">High ({{ high_count }})</button>
                     <button type="button" class="btn-filter text-warning" onclick="filterEntities('MEDIUM', this)">Medium ({{ med_count }})</button>
-                    <button type="button" class="btn-filter text-info" onclick="filterEntities('LOW', this)">Low ({{ low_count }})</button>
+                    <button type="button" class="btn-filter text-success" onclick="filterEntities('LOW', this)">Low ({{ low_count }})</button>
                 </div>
             </div>
         </div>
@@ -145,7 +145,7 @@
                 </thead>
                 <tbody>
                     {% for ent in entities %}
-                    <tr class="entity-row severity-{{ ent.risk_level|lower }}"
+                    <tr class="process-row entity-row severity-{{ ent.risk_level|lower }}"
                         data-severity="{{ ent.risk_level }}"
                         data-search="{{ (ent.process_name ~ ' ' ~ (ent.pid if ent.pid is not none else '') ~ ' ' ~ (ent.signals_triggered or ''))|lower }}">
                         <td>
@@ -165,12 +165,12 @@
                             {{ ent.process_name }}
                         </td>
                         <td class="font-mono">
-                            {% if ent.pid is not none %}{{ ent.pid }}{% else %}<span class="text-muted">None</span>{% endif %}
+                            {% if ent.pid is not none %}{{ ent.pid }}{% else %}<span class="text-tertiary">None</span>{% endif %}
                         </td>
                         <td>
                             {% if ent.signals_triggered %}
                                 {% for sig in ent.signals_triggered.split(',') %}
-                                <span class="badge badge-signal badge-signal-{{ sig }}">
+                                <span class="signal-chip {{ sig|lower }}">
                                     {% if sig == 'process_view' %}Process View (0.40)
                                     {% elif sig == 'persistence' %}Persistence (0.30)
                                     {% elif sig == 'signature' %}Signature (0.30)
@@ -179,7 +179,7 @@
                                 </span>
                                 {% endfor %}
                             {% else %}
-                                <span class="text-muted">No threat signals (Diagnostics only)</span>
+                                <span class="text-tertiary">No threat signals (Diagnostics only)</span>
                             {% endif %}
                         </td>
                         <td>
@@ -211,7 +211,7 @@
     {% else %}
     <!-- 4. Empty State: No Scans Completed Yet -->
     <section class="card empty-state-card">
-        <div class="empty-state-icon">🛡️</div>
+        <div class="empty-state-icon">🛡</div>
         <h2>No Completed Scans Recorded</h2>
         <p>GhostHunt has not completed a detection cycle yet. Run a scan to initiate forensic analysis.</p>
         <button type="button" class="btn btn-primary btn-lg" onclick="triggerManualScan()">
@@ -224,7 +224,7 @@
     <section class="card baseline-card">
         <div class="card-header">
             <div class="card-header-title">
-                <h2>Persistence Reference Baselines</h2>
+                <h2 class="card-title">Persistence Reference Baselines</h2>
                 <span class="badge badge-secondary">Fixed Reference Model</span>
             </div>
             <div class="card-header-actions">
@@ -248,7 +248,7 @@
                 </thead>
                 <tbody>
                     {% for cat, meta in baseline_meta.items() %}
-                    <tr>
+                    <tr class="process-row">
                         <td class="font-bold">{{ cat|upper }}</td>
                         <td>
                             <span class="badge badge-state-{{ meta.state|lower }}">
@@ -257,7 +257,7 @@
                         </td>
                         <td class="font-mono">{{ meta.candidate_entry_count }}</td>
                         <td class="font-mono">{{ meta.accepted_entry_count }}</td>
-                        <td class="text-muted">{{ meta.last_updated }}</td>
+                        <td class="text-tertiary">{{ meta.last_updated }}</td>
                         <td>
                             {% if meta.state == 'CANDIDATE_REVIEW' %}
                             <button type="button" class="btn btn-sm btn-success" onclick="acceptBaseline('{{ cat }}')">
@@ -266,7 +266,7 @@
                             {% elif meta.state == 'ACCEPTED_TRUSTED' %}
                             <span class="text-success font-bold">✓ Active Reference</span>
                             {% else %}
-                            <span class="text-muted">—</span>
+                            <span class="text-tertiary">—</span>
                             {% endif %}
                         </td>
                     </tr>
@@ -281,7 +281,7 @@
 <div id="reset-modal" class="modal-overlay hidden" onclick="if (event.target === this) closeResetModal()">
     <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="reset-modal-title">
         <div class="modal-header">
-            <h3 id="reset-modal-title">⚠️ Confirm Persistence Baseline Reset</h3>
+            <h3 id="reset-modal-title">⚠ Confirm Persistence Baseline Reset</h3>
         </div>
         <div class="modal-body">
             <p>Are you sure you want to reset all persistence reference baselines?</p>

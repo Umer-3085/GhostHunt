@@ -5,7 +5,7 @@
 {% block content %}
 <div class="history-view">
     <div class="view-header">
-        <h1>Historical Scan Audit Log</h1>
+        <h1 class="display-md">Historical Scan Audit Log</h1>
         <p class="subtitle">Immutable audit trail of all automated and manual scan cycles.</p>
     </div>
 
@@ -14,7 +14,7 @@
     <section class="card selected-scan-card">
         <div class="card-header">
             <div class="card-header-title">
-                <h2>Scan Snapshot #{{ selected_scan.id }}</h2>
+                <h2 class="card-title">Scan Snapshot #{{ selected_scan.id }}</h2>
                 <span class="badge badge-state-{{ selected_scan.status|lower }}">
                     {{ selected_scan.status }}
                 </span>
@@ -34,8 +34,8 @@
         </div>
 
         {% if selected_entities %}
-        <div class="table-responsive" style="margin-top: 1.5rem;">
-            <h3>Correlated Entities in Snapshot #{{ selected_scan.id }}</h3>
+        <div class="table-responsive" style="margin-top: var(--space-lg);">
+            <h3 class="subhead" style="margin-bottom: var(--space-md);">Correlated Entities in Snapshot #{{ selected_scan.id }}</h3>
             <table class="data-table">
                 <thead>
                     <tr>
@@ -48,7 +48,7 @@
                 </thead>
                 <tbody>
                     {% for ent in selected_entities %}
-                    <tr>
+                    <tr class="process-row">
                         <td><span class="badge badge-severity badge-{{ ent.risk_level|lower }}">{{ ent.risk_level }}</span></td>
                         <td class="font-mono">{{ "%.2f"|format(ent.score) }}</td>
                         <td class="font-bold">{{ ent.process_name }}</td>
@@ -67,7 +67,7 @@
     <section class="card">
         <div class="card-header">
             <div class="card-header-title">
-                <h2>All Historical Execution Cycles</h2>
+                <h2 class="card-title">All Historical Execution Cycles</h2>
                 <span class="count-badge">{{ history|length }} scans</span>
             </div>
         </div>
@@ -89,15 +89,15 @@
                 </thead>
                 <tbody>
                     {% for s in history %}
-                    <tr class="history-row {% if selected_scan and selected_scan.id == s.id %}selected{% endif %}">
+                    <tr class="history-row {% if selected_scan and selected_scan.id == s.id %}selected{% endif %} process-row">
                         <td class="font-mono font-bold">#{{ s.id }}</td>
                         <td>
                             <span class="badge badge-state-{{ s.status|lower }}">
                                 {{ s.status }}
                             </span>
                         </td>
-                        <td class="text-muted">{{ s.scan_time or s.started_at }}</td>
-                        <td class="text-muted">{{ s.completed_at or '—' }}</td>
+                        <td class="text-tertiary">{{ s.scan_time or s.started_at }}</td>
+                        <td class="text-tertiary">{{ s.completed_at or '—' }}</td>
                         <td class="font-mono">{{ "%.1f"|format(s.scan_duration_ms or s.duration_ms or 0) }} ms</td>
                         <td class="font-mono">{{ s.total_findings }}</td>
                         <td class="font-mono {% if s.high_risk_count > 0 %}text-danger font-bold{% endif %}">{{ s.high_risk_count }}</td>

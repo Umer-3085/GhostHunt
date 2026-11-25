@@ -105,6 +105,8 @@ def api_status():
         }), 503
 
     sched = scheduler.GLOBAL_SCHEDULER
+    scan_progress = scheduler.get_scan_progress()
+
     return jsonify({
         "success": True,
         "status": "ok",
@@ -121,6 +123,7 @@ def api_status():
         },
         "latest_completed_scan_id": latest_scan_id,
         "latest_scan": latest_scan,
+        "scan_progress": scan_progress,
     }), 200
 
 
@@ -179,6 +182,19 @@ def api_latest_scan():
 
     status = db.get_scan_status(latest_id, db_path=db_path)
     return jsonify({"success": True, "scan": status}), 200
+
+
+@dashboard_bp.route("/api/scan/progress", methods=["GET"])
+def api_scan_progress():
+    """
+    Returns the current in-progress scan phase and progress percentage.
+    Used by the UI to display a live progress panel during active scans.
+    """
+    progress = scheduler.get_scan_progress()
+    return jsonify({
+        "success": True,
+        "progress": progress,
+    }), 200
 
 
 @dashboard_bp.route("/api/scan/<int:scan_id>", methods=["GET"])
@@ -381,6 +397,22 @@ def api_history():
         "success": True,
         "count": len(history),
         "history": history,
+    }), 200
+
+
+@dashboard_bp.route("/api/scans/recent", methods=["GET"])
+def api_recent_scans():
+    """
+    Returns the last 10 completed scans with summary data for the timeline card.
+    """
+    db_path = get_active_db_path()
+    history = db.get_scan_history(limit=10, db_path=db_path)
+    # Filter to only completed scans
+    completed = [h for h in history if h.get("status") == "COMPLETED"]
+    return jsonify({
+        "success": True,
+        "count": len(completed),
+        "scans": completed,
     }), 200
 
 

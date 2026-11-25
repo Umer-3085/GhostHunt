@@ -3,10 +3,12 @@
  * Implements 5s asynchronous polling, manual scan trigger, HTTP 409 conflict handling,
  * live entity search & severity filtering, and baseline review & reset actions with CSRF protection.
  * Day 1 UI Polish: Scheduler ETA countdown, Skeleton loaders, Enhanced toast system with actions & persistence.
+ * Day 2 UI Polish: Scan progress panel, Notification bell, Keyboard shortcuts, Help overlay.
  */
 
 let currentSeverityFilter = 'ALL';
 let schedulerIntervalId = null;
+let scanProgressIntervalId = null;
 let toastHistory = [];
 
 // Retrieve CSRF token from page meta tag
@@ -139,6 +141,9 @@ async function triggerManualScan() {
         btn.innerHTML = '<span class="spin">⟳</span> <span>Scanning...</span>';
     }
 
+    // Start progress polling
+    startScanProgressPolling();
+
     try {
         const response = await fetch('/api/scan', {
             method: 'POST',
@@ -154,14 +159,21 @@ async function triggerManualScan() {
         if (response.status === 409) {
             // Concurrency Guard Conflict
             showToast(data.message || 'Another protected operation is currently active.', 'warning');
+            stopScanProgressPolling();
         } else if (response.ok && data.success) {
             showToast(`Scan #${data.scan_id} completed successfully in ${data.duration_ms.toFixed(1)} ms!`, 'success');
-            setTimeout(() => window.location.reload(), 1200);
+            // Keep polling briefly to show completion, then reload
+            setTimeout(() => {
+                stopScanProgressPolling();
+                window.location.reload();
+            }, 1500);
         } else {
             showToast(data.message || 'Scan execution failed.', 'danger');
+            stopScanProgressPolling();
         }
     } catch (err) {
         showToast(`Network or server error: ${err.message}`, 'danger');
+        stopScanProgressPolling();
     } finally {
         if (btn) {
             btn.disabled = false;
@@ -367,6 +379,16 @@ async function pollStatus() {
         // Update scheduler ETA countdown
         updateSchedulerEta(data);
 
+        // Check for active scan progress (from scheduler or manual)
+        if (data.scan_progress) {
+            updateScanProgressPanel(data.scan_progress);
+            if (data.scan_progress.phase !== 'idle' && data.scan_progress.phase !== 'complete') {
+                startScanProgressPolling();
+            } else {
+                stopScanProgressPolling();
+            }
+        }
+
         // Detect new completed scan on main dashboard page
         if (data.latest_completed_scan_id !== undefined && data.latest_completed_scan_id !== null) {
             if (lastKnownScanId === null) {
@@ -407,4 +429,280 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => {
         removeSkeletons('entities-table', '.metrics-grid');
     }, 6000);
+
+    // Initialize notification bell
+    initNotificationBell();
+
+    // Initialize keyboard shortcuts
+    initKeyboardShortcuts();
 });
+
+// ===========================================================================
+// Scan Progress Panel (Day 2)
+// ===========================================================================
+
+async function pollScanProgress() {
+    try {
+        const response = await fetch('/api/scan/progress');
+        if (!response.ok) return;
+
+        const data = await response.json();
+        updateScanProgressPanel(data.progress);
+    } catch (e) {
+        // Silent failure
+    }
+}
+
+function updateScanProgressPanel(progress) {
+    const panel = document.getElementById('scan-progress-panel');
+    const fill = document.getElementById('scan-progress-fill');
+    const label = document.getElementById('scan-progress-label');
+    const phases = document.querySelectorAll('#scan-progress-phases .phase-pill');
+
+    if (!panel || !fill || !label) return;
+
+    const phase = progress.phase || 'idle';
+    const pct = progress.progress || 0;
+
+    if (phase === 'idle') {
+        panel.style.display = 'none';
+        stopScanProgressPolling();
+        return;
+    }
+
+    panel.style.display = 'flex';
+    fill.style.width = `${pct}%`;
+    fill.setAttribute('aria-valuenow', pct);
+
+    // Update phase pills
+    const phaseOrder = ['process_views', 'persistence', 'signatures', 'correlation', 'complete'];
+    const currentIdx = phaseOrder.indexOf(phase);
+
+    phases.forEach((pill, idx) => {
+        const pillPhase = pill.dataset.phase;
+        const pillIdx = phaseOrder.indexOf(pillPhase);
+        pill.classList.remove('active', 'completed');
+        if (pillIdx < currentIdx) {
+            pill.classList.add('completed');
+        } else if (pillIdx === currentIdx) {
+            pill.classList.add('active');
+        }
+    });
+
+    // Update label
+    const phaseLabels = {
+        'process_views': 'Scanning process views…',
+        'persistence': 'Enumerating persistence…',
+        'signatures': 'Verifying signatures…',
+        'correlation': 'Correlating risk signals…',
+        'complete': 'Finalizing…',
+    };
+    label.textContent = phaseLabels[phase] || `Scan in progress (${pct}%)`;
+}
+
+function startScanProgressPolling() {
+    if (scanProgressIntervalId) return;
+    pollScanProgress(); // immediate first poll
+    scanProgressIntervalId = setInterval(pollScanProgress, 2000);
+}
+
+function stopScanProgressPolling() {
+    if (scanProgressIntervalId) {
+        clearInterval(scanProgressIntervalId);
+        scanProgressIntervalId = null;
+    }
+}
+
+// ===========================================================================
+// Notification Bell (Day 2)
+// ===========================================================================
+
+function initNotificationBell() {
+    const bell = document.getElementById('notification-bell');
+    const dropdown = document.getElementById('notification-dropdown');
+    const badge = document.getElementById('notification-badge');
+    const list = document.getElementById('notification-list');
+    const empty = document.getElementById('notification-empty');
+    const clearBtn = document.getElementById('clear-notifications');
+
+    if (!bell || !dropdown) return;
+
+    // Toggle dropdown
+    bell.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isOpen = dropdown.style.display !== 'none';
+        dropdown.style.display = isOpen ? 'none' : 'block';
+        bell.setAttribute('aria-expanded', !isOpen);
+        if (!isOpen) {
+            renderNotificationList();
+        }
+    });
+
+    // Close on outside click
+    document.addEventListener('click', (e) => {
+        if (!bell.contains(e.target) && !dropdown.contains(e.target)) {
+            dropdown.style.display = 'none';
+            bell.setAttribute('aria-expanded', 'false');
+        }
+    });
+
+    // Clear all
+    if (clearBtn) {
+        clearBtn.addEventListener('click', () => {
+            clearToastHistory();
+            renderNotificationList();
+            updateNotificationBadge();
+        });
+    }
+
+    // Initial render
+    updateNotificationBadge();
+}
+
+function renderNotificationList() {
+    const list = document.getElementById('notification-list');
+    const empty = document.getElementById('notification-empty');
+    if (!list) return;
+
+    list.innerHTML = '';
+
+    if (toastHistory.length === 0) {
+        list.style.display = 'none';
+        if (empty) empty.style.display = 'block';
+        return;
+    }
+
+    list.style.display = 'block';
+    if (empty) empty.style.display = 'none';
+
+    toastHistory.slice(0, 20).forEach(toast => {
+        const item = document.createElement('div');
+        item.className = `notification-item notification-${toast.type}`;
+        item.setAttribute('role', 'listitem');
+
+        const time = new Date(toast.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const icons = { success: '✓', warning: '⚠', danger: '✕', info: 'ℹ' };
+
+        item.innerHTML = `
+            <span class="notification-icon">${icons[toast.type] || 'ℹ'}</span>
+            <div class="notification-content">
+                <span class="notification-message">${escapeHtml(toast.message)}</span>
+                <span class="notification-time">${time}</span>
+            </div>
+        `;
+        list.appendChild(item);
+    });
+}
+
+function updateNotificationBadge() {
+    const badge = document.getElementById('notification-badge');
+    if (!badge) return;
+
+    const unreadCount = toastHistory.length;
+    if (unreadCount > 0) {
+        badge.textContent = unreadCount > 99 ? '99+' : unreadCount;
+        badge.style.display = 'flex';
+    } else {
+        badge.style.display = 'none';
+    }
+}
+
+// ===========================================================================
+// Keyboard Shortcuts (Day 2)
+// ===========================================================================
+
+function initKeyboardShortcuts() {
+    document.addEventListener('keydown', handleGlobalKeydown);
+}
+
+function handleGlobalKeydown(e) {
+    // Don't trigger shortcuts when typing in inputs
+    const active = document.activeElement;
+    if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) {
+        return;
+    }
+
+    const key = e.key.toLowerCase();
+
+    switch (key) {
+        case 's':
+            e.preventDefault();
+            triggerManualScan();
+            break;
+        case 't':
+            e.preventDefault();
+            window.toggleTheme();
+            break;
+        case 'r':
+            e.preventDefault();
+            confirmResetBaseline();
+            break;
+        case '?':
+            if (e.shiftKey) {
+                e.preventDefault();
+                showHelpOverlay();
+            }
+            break;
+        case '1':
+            if (!e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
+                e.preventDefault();
+                window.location.href = '/';
+            }
+            break;
+        case '2':
+            if (!e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
+                e.preventDefault();
+                window.location.href = '/system-findings';
+            }
+            break;
+        case '3':
+            if (!e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
+                e.preventDefault();
+                window.location.href = '/history';
+            }
+            break;
+        case '4':
+            if (!e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
+                e.preventDefault();
+                window.location.href = '/simulations';
+            }
+            break;
+        case 'escape':
+            closeResetModal();
+            hideHelpOverlay();
+            break;
+    }
+}
+
+function showHelpOverlay() {
+    const overlay = document.getElementById('help-overlay');
+    if (overlay) {
+        overlay.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+    }
+}
+
+function hideHelpOverlay() {
+    const overlay = document.getElementById('help-overlay');
+    if (overlay) {
+        overlay.style.display = 'none';
+        document.body.style.overflow = '';
+    }
+}
+
+// ===========================================================================
+// Utility
+// ===========================================================================
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Override showToast to update notification badge
+const originalShowToast = showToast;
+showToast = function(message, type = 'info', durationMs = 4000, action = null) {
+    originalShowToast(message, type, durationMs, action);
+    updateNotificationBadge();
+};

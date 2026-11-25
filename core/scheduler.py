@@ -31,6 +31,35 @@ logger = logging.getLogger("ghosthunt.scheduler")
 # Shared in-process re-entrant lock protecting scan, accept, and reset operations
 GLOBAL_OPERATION_LOCK = threading.RLock()
 
+# Scan progress tracking (in-memory, single-process)
+_SCAN_PROGRESS: Dict[str, Any] = {
+    "scan_id": None,
+    "phase": "idle",  # idle, process_views, persistence, signatures, correlation, complete
+    "progress": 0,    # 0-100
+    "started_at": None,
+    "updated_at": None,
+}
+_SCAN_PROGRESS_LOCK = threading.Lock()
+
+
+def _update_scan_progress(scan_id: Optional[int], phase: str, progress: int) -> None:
+    """Update the in-memory scan progress tracker."""
+    with _SCAN_PROGRESS_LOCK:
+        _SCAN_PROGRESS["scan_id"] = scan_id
+        _SCAN_PROGRESS["phase"] = phase
+        _SCAN_PROGRESS["progress"] = max(0, min(100, progress))
+        _SCAN_PROGRESS["updated_at"] = time.time()
+        if phase != "idle" and _SCAN_PROGRESS["started_at"] is None:
+            _SCAN_PROGRESS["started_at"] = time.time()
+        if phase in ("complete", "idle"):
+            _SCAN_PROGRESS["started_at"] = None
+
+
+def get_scan_progress() -> Dict[str, Any]:
+    """Return a copy of the current scan progress state."""
+    with _SCAN_PROGRESS_LOCK:
+        return dict(_SCAN_PROGRESS)
+
 
 class ConcurrencyBusyError(Exception):
     """Raised when an operation cannot acquire the shared operation lock."""
@@ -68,12 +97,14 @@ def execute_scan_cycle(
 
     # Step 1: Start scan record
     scan_id = db.start_scan(db_path=effective_db)
+    _update_scan_progress(scan_id, "process_views", 5)
     logger.info("Started scan cycle %d", scan_id)
 
     all_findings: List[Dict[str, Any]] = []
 
     try:
         # Step 2: Execute process-view enumeration
+        _update_scan_progress(scan_id, "process_views", 15)
         pv_func = pv_runner or process_views_engine.run_scan
         try:
             # Pass scan_id=None so findings are collected in memory without early commit
@@ -81,22 +112,27 @@ def execute_scan_cycle(
             all_findings.extend(pv_findings)
         except Exception as ex:
             raise RuntimeError(f"Process-view enumeration failed: {ex}") from ex
+        _update_scan_progress(scan_id, "process_views", 25)
 
         # Step 3: Execute persistence enumeration
+        _update_scan_progress(scan_id, "persistence", 35)
         per_func = persistence_runner or persistence_engine.run_scan
         try:
             per_findings = per_func(scan_id=None, db_path=effective_db)
             all_findings.extend(per_findings)
         except Exception as ex:
             raise RuntimeError(f"Persistence enumeration failed: {ex}") from ex
+        _update_scan_progress(scan_id, "persistence", 50)
 
         # Step 4: Execute signature/module analysis
+        _update_scan_progress(scan_id, "signatures", 60)
         sig_func = signature_runner or signatures_engine.run_scan
         try:
             sig_findings = sig_func(scan_id=None, db_path=effective_db)
             all_findings.extend(sig_findings)
         except Exception as ex:
             raise RuntimeError(f"Signature analysis failed: {ex}") from ex
+        _update_scan_progress(scan_id, "signatures", 70)
 
         # Step 5: Collect and stamp findings with actual scan_id
         stamped_findings: List[Dict[str, Any]] = []
@@ -106,10 +142,12 @@ def execute_scan_cycle(
             stamped_findings.append(f_copy)
 
         # Step 6: Validate and persist findings
+        _update_scan_progress(scan_id, "correlation", 75)
         if stamped_findings:
             db.insert_findings(scan_id, stamped_findings, db_path=effective_db)
 
         # Step 7: Run risk correlation
+        _update_scan_progress(scan_id, "correlation", 85)
         risk_scores, quarantined = correlator.correlate_all(
             scan_id,
             stamped_findings,
@@ -117,10 +155,12 @@ def execute_scan_cycle(
         )
 
         # Step 8: Persist risk scores
+        _update_scan_progress(scan_id, "correlation", 90)
         if risk_scores:
             db.insert_risk_scores(scan_id, risk_scores, db_path=effective_db)
 
         # Step 9: Mark scan COMPLETED
+        _update_scan_progress(scan_id, "complete", 95)
         duration_ms = (time.perf_counter() - start_time) * 1000.0
         high_risk_count = sum(1 for r in risk_scores if r.get("risk_level") == "HIGH")
         total_findings = len(stamped_findings)
@@ -138,6 +178,7 @@ def execute_scan_cycle(
             db_path=effective_db,
         )
 
+        _update_scan_progress(scan_id, "complete", 100)
         logger.info(
             "Scan %d completed in %.2f ms (total_findings=%d, high_risk=%d)",
             scan_id, duration_ms, total_findings, high_risk_count,
@@ -159,6 +200,7 @@ def execute_scan_cycle(
         duration_ms = (time.perf_counter() - start_time) * 1000.0
         err_msg = f"{type(ex).__name__}: {str(ex)}"
         logger.error("Scan %d failed after %.2f ms: %s", scan_id, duration_ms, err_msg)
+        _update_scan_progress(scan_id, "idle", 0)
         try:
             db.fail_scan(scan_id, error_message=err_msg, duration_ms=duration_ms, db_path=effective_db)
         except Exception as fail_err:

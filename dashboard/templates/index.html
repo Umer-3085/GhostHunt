@@ -165,14 +165,29 @@
                 <tbody id="entities-tbody">
                     {% for ent in entities %}
                     <tr class="process-row entity-row severity-{{ ent.risk_level|lower }}"
+                        id="entity-row-{{ loop.index }}"
                         data-severity="{{ ent.risk_level }}"
                         data-pid="{{ ent.pid if ent.pid is not none else '' }}"
                         data-score="{{ ent.score }}"
+                        data-signals="{{ ent.signals_triggered or '' }}"
+                        data-process-name="{{ ent.process_name }}"
+                        data-index="{{ loop.index }}"
+                        tabindex="0"
+                        role="button"
+                        aria-expanded="false"
+                        aria-controls="waterfall-panel-{{ loop.index }}"
                         data-search="{{ (ent.process_name ~ ' ' ~ (ent.pid if ent.pid is not none else '') ~ ' ' ~ (ent.signals_triggered or ''))|lower }}">
-                        <td>
-                            <span class="badge badge-severity badge-{{ ent.risk_level|lower }}">
-                                {{ ent.risk_level }}
-                            </span>
+                        <td class="cell-severity">
+                            <div class="severity-wrapper">
+                                <button type="button" class="waterfall-chevron-btn" aria-label="Toggle signal breakdown for {{ ent.process_name }}" tabindex="-1">
+                                    <svg class="waterfall-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                        <polyline points="6 9 12 15 18 9"></polyline>
+                                    </svg>
+                                </button>
+                                <span class="badge badge-severity badge-{{ ent.risk_level|lower }}">
+                                    {{ ent.risk_level }}
+                                </span>
+                            </div>
                         </td>
                         <td>
                             <div class="score-container">
@@ -216,6 +231,84 @@
                                 Evidence →
                             </a>
                             {% endif %}
+                        </td>
+                    </tr>
+                    <tr class="waterfall-row hidden" id="waterfall-row-{{ loop.index }}" data-waterfall-index="{{ loop.index }}" aria-hidden="true">
+                        <td colspan="7" class="waterfall-cell">
+                            <div class="waterfall-panel" id="waterfall-panel-{{ loop.index }}" role="region" aria-label="Signal breakdown for {{ ent.process_name }}">
+                                <div class="waterfall-header">
+                                    <div class="waterfall-header-title">
+                                        <span class="waterfall-title-text font-mono">SIGNAL RISK BREAKDOWN</span>
+                                        <span class="waterfall-formula text-tertiary font-mono">Composite = min(1.0, &Sigma; active weights)</span>
+                                    </div>
+                                    <div class="waterfall-composite-pill font-mono">
+                                        <span class="text-tertiary">Entity Risk:</span>
+                                        <span class="waterfall-composite-score font-bold font-mono">{{ "%.2f"|format(ent.score or 0.0) }}</span>
+                                        <span class="badge badge-severity badge-{{ ent.risk_level|lower }}">{{ ent.risk_level }}</span>
+                                    </div>
+                                </div>
+
+                                {% set active_signals = (ent.signals_triggered or '').split(',') %}
+                                {% set pv_active = 'process_view' in active_signals %}
+                                {% set per_active = 'persistence' in active_signals %}
+                                {% set sig_active = 'signature' in active_signals %}
+
+                                <div class="waterfall-signals-grid">
+                                    <!-- 1. Process Views (weight 0.40) -->
+                                    <div class="waterfall-signal-item {% if pv_active %}is-active{% endif %}" data-signal-name="process_view">
+                                        <div class="signal-label-col">
+                                            <span class="signal-status-dot {% if pv_active %}risk-dot-high{% else %}risk-dot-inactive{% endif %}"></span>
+                                            <span class="signal-label">Process Views</span>
+                                            <span class="signal-weight text-tertiary font-mono">(weight 0.40)</span>
+                                        </div>
+                                        <div class="signal-bar-col">
+                                            <div class="signal-bar" role="progressbar" aria-valuenow="{% if pv_active %}0.40{% else %}0.00{% endif %}" aria-valuemin="0" aria-valuemax="1" aria-label="Process Views contribution">
+                                                <div class="signal-bar-fill {% if pv_active %}fill-high severity-high{% else %}fill-inactive{% endif %}" style="width: {% if pv_active %}40{% else %}0{% endif %}%;"></div>
+                                            </div>
+                                        </div>
+                                        <div class="signal-values-col font-mono">
+                                            <span class="signal-raw">Raw: <strong>{% if pv_active %}1.00{% else %}0.00{% endif %}</strong></span>
+                                            <span class="signal-contrib {% if pv_active %}text-danger font-bold{% else %}text-tertiary{% endif %}">Contrib: <strong>{% if pv_active %}+0.40{% else %}+0.00{% endif %}</strong></span>
+                                        </div>
+                                    </div>
+
+                                    <!-- 2. Persistence (weight 0.30) -->
+                                    <div class="waterfall-signal-item {% if per_active %}is-active{% endif %}" data-signal-name="persistence">
+                                        <div class="signal-label-col">
+                                            <span class="signal-status-dot {% if per_active %}risk-dot-medium{% else %}risk-dot-inactive{% endif %}"></span>
+                                            <span class="signal-label">Persistence</span>
+                                            <span class="signal-weight text-tertiary font-mono">(weight 0.30)</span>
+                                        </div>
+                                        <div class="signal-bar-col">
+                                            <div class="signal-bar" role="progressbar" aria-valuenow="{% if per_active %}0.30{% else %}0.00{% endif %}" aria-valuemin="0" aria-valuemax="1" aria-label="Persistence contribution">
+                                                <div class="signal-bar-fill {% if per_active %}fill-medium severity-medium{% else %}fill-inactive{% endif %}" style="width: {% if per_active %}30{% else %}0{% endif %}%;"></div>
+                                            </div>
+                                        </div>
+                                        <div class="signal-values-col font-mono">
+                                            <span class="signal-raw">Raw: <strong>{% if per_active %}1.00{% else %}0.00{% endif %}</strong></span>
+                                            <span class="signal-contrib {% if per_active %}text-warning font-bold{% else %}text-tertiary{% endif %}">Contrib: <strong>{% if per_active %}+0.30{% else %}+0.00{% endif %}</strong></span>
+                                        </div>
+                                    </div>
+
+                                    <!-- 3. Signature (weight 0.30) -->
+                                    <div class="waterfall-signal-item {% if sig_active %}is-active{% endif %}" data-signal-name="signature">
+                                        <div class="signal-label-col">
+                                            <span class="signal-status-dot {% if sig_active %}risk-dot-medium{% else %}risk-dot-inactive{% endif %}"></span>
+                                            <span class="signal-label">Signature</span>
+                                            <span class="signal-weight text-tertiary font-mono">(weight 0.30)</span>
+                                        </div>
+                                        <div class="signal-bar-col">
+                                            <div class="signal-bar" role="progressbar" aria-valuenow="{% if sig_active %}0.30{% else %}0.00{% endif %}" aria-valuemin="0" aria-valuemax="1" aria-label="Signature contribution">
+                                                <div class="signal-bar-fill {% if sig_active %}fill-medium severity-medium{% else %}fill-inactive{% endif %}" style="width: {% if sig_active %}30{% else %}0{% endif %}%;"></div>
+                                            </div>
+                                        </div>
+                                        <div class="signal-values-col font-mono">
+                                            <span class="signal-raw">Raw: <strong>{% if sig_active %}1.00{% else %}0.00{% endif %}</strong></span>
+                                            <span class="signal-contrib {% if sig_active %}text-warning font-bold{% else %}text-tertiary{% endif %}">Contrib: <strong>{% if sig_active %}+0.30{% else %}+0.00{% endif %}</strong></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </td>
                     </tr>
                     {% endfor %}

@@ -106,11 +106,21 @@ function applyEntityFilters() {
         const matchesSeverity = currentSeverityFilter === 'ALL' || rowSeverity === currentSeverityFilter;
         const matchesSearch = !query || rowSearch.includes(query);
 
+        const nextRow = row.nextElementSibling;
+        const isWaterfall = nextRow && nextRow.classList.contains('waterfall-row');
+
         if (matchesSeverity && matchesSearch) {
             row.style.display = '';
             visibleCount++;
         } else {
             row.style.display = 'none';
+            if (isWaterfall) {
+                nextRow.classList.add('hidden');
+                nextRow.classList.remove('is-expanded');
+                row.classList.remove('is-expanded');
+                row.setAttribute('aria-expanded', 'false');
+                nextRow.setAttribute('aria-hidden', 'true');
+            }
         }
     });
 
@@ -467,6 +477,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (window.TimelineCard) {
             TimelineCard.init();
         }
+    }
+
+    if (window.SignalWaterfall) {
+        SignalWaterfall.init();
     }
 
     pollStatus();
@@ -1443,3 +1457,203 @@ const TimelineCard = {
 
 window.TimelineCard = TimelineCard;
 window.loadSchedulerTimeline = () => TimelineCard.load();
+
+/**
+ * SignalWaterfall — Per-Entity 3-Signal Expandable Visualization
+ * Manages accordion expand/collapse, signal score contribution calculation,
+ * severity classifications, and keyboard accessibility.
+ */
+class SignalWaterfall {
+    static WEIGHTS = {
+        process_view: 0.40,
+        persistence: 0.30,
+        signature: 0.30
+    };
+
+    static LABELS = {
+        process_view: 'Process Views',
+        persistence: 'Persistence',
+        signature: 'Signature'
+    };
+
+    static _initialized = false;
+
+    static classifySeverity(score) {
+        if (score >= 0.60) return 'HIGH';
+        if (score >= 0.40) return 'MEDIUM';
+        return 'LOW';
+    }
+
+    static getRiskDotClass(severity) {
+        const s = (severity || '').toUpperCase();
+        if (s === 'HIGH') return 'risk-dot-high';
+        if (s === 'MEDIUM') return 'risk-dot-medium';
+        if (s === 'LOW') return 'risk-dot-low';
+        return 'risk-dot-inactive';
+    }
+
+    static getFillClass(severity) {
+        const s = (severity || '').toUpperCase();
+        if (s === 'HIGH') return 'fill-high severity-high';
+        if (s === 'MEDIUM') return 'fill-medium severity-medium';
+        if (s === 'LOW') return 'fill-low severity-low';
+        return 'fill-inactive';
+    }
+
+    static init() {
+        const table = document.getElementById('entities-table');
+        if (!table || this._initialized) return;
+        this._initialized = true;
+
+        // Click delegation on entity rows
+        table.addEventListener('click', (e) => {
+            if (e.target.closest('a, .btn:not(.waterfall-chevron-btn)')) {
+                return;
+            }
+
+            const row = e.target.closest('.entity-row');
+            if (row) {
+                this.toggle(row);
+            }
+        });
+
+        // Keyboard navigation: Enter/Space to toggle, Escape to close
+        table.addEventListener('keydown', (e) => {
+            const row = e.target.closest('.entity-row');
+            if (row && (e.key === 'Enter' || e.key === ' ')) {
+                e.preventDefault();
+                this.toggle(row);
+            } else if (e.key === 'Escape') {
+                this.closeAll();
+            }
+        });
+
+        // Global Escape key to close any open waterfall
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                this.closeAll();
+            }
+        });
+    }
+
+    static toggle(rowOrIndex) {
+        const row = typeof rowOrIndex === 'string' || typeof rowOrIndex === 'number'
+            ? document.querySelector(`.entity-row[data-index="${rowOrIndex}"]`) || document.getElementById(`entity-row-${rowOrIndex}`)
+            : rowOrIndex;
+
+        if (!row) return;
+
+        const isExpanded = row.classList.contains('is-expanded') || row.getAttribute('aria-expanded') === 'true';
+        if (isExpanded) {
+            this.collapse(row);
+        } else {
+            this.expand(row);
+        }
+    }
+
+    static expand(row) {
+        this.closeAll();
+
+        const waterfallRow = row.nextElementSibling && row.nextElementSibling.classList.contains('waterfall-row')
+            ? row.nextElementSibling
+            : document.getElementById(row.getAttribute('aria-controls')?.replace('waterfall-panel-', 'waterfall-row-'));
+
+        if (!waterfallRow) return;
+
+        row.classList.add('is-expanded');
+        row.setAttribute('aria-expanded', 'true');
+
+        waterfallRow.classList.remove('hidden');
+        waterfallRow.setAttribute('aria-hidden', 'false');
+
+        // Force browser layout reflow before adding .is-expanded for smooth CSS transition
+        void waterfallRow.offsetHeight;
+        waterfallRow.classList.add('is-expanded');
+    }
+
+    static collapse(row) {
+        const waterfallRow = row.nextElementSibling && row.nextElementSibling.classList.contains('waterfall-row')
+            ? row.nextElementSibling
+            : document.getElementById(row.getAttribute('aria-controls')?.replace('waterfall-panel-', 'waterfall-row-'));
+
+        row.classList.remove('is-expanded');
+        row.setAttribute('aria-expanded', 'false');
+
+        if (!waterfallRow) return;
+
+        waterfallRow.classList.remove('is-expanded');
+        waterfallRow.setAttribute('aria-hidden', 'true');
+
+        const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (prefersReducedMotion) {
+            waterfallRow.classList.add('hidden');
+        } else {
+            setTimeout(() => {
+                if (!waterfallRow.classList.contains('is-expanded')) {
+                    waterfallRow.classList.add('hidden');
+                }
+            }, 300);
+        }
+    }
+
+    static closeAll() {
+        const expandedRows = document.querySelectorAll('.entity-row.is-expanded');
+        expandedRows.forEach(row => this.collapse(row));
+    }
+
+    static renderPanel(entity) {
+        const signals = (entity.signals_triggered || '').split(',').map(s => s.trim().toLowerCase());
+        const totalScore = parseFloat(entity.score) || 0.0;
+        const entitySev = entity.risk_level || this.classifySeverity(totalScore);
+
+        const itemsHtml = Object.entries(this.WEIGHTS).map(([key, weight]) => {
+            const isActive = signals.includes(key);
+            const label = this.LABELS[key] || key;
+            const rawScore = isActive ? 1.0 : 0.0;
+            const contrib = isActive ? weight : 0.0;
+            const percent = isActive ? Math.round(weight * 100) : 0;
+            const sev = isActive ? (weight >= 0.40 ? 'HIGH' : 'MEDIUM') : 'LOW';
+            const dotClass = isActive ? (weight >= 0.40 ? 'risk-dot-high' : 'risk-dot-medium') : 'risk-dot-inactive';
+            const fillClass = isActive ? (weight >= 0.40 ? 'fill-high severity-high' : 'fill-medium severity-medium') : 'fill-inactive';
+            const contribClass = isActive ? (weight >= 0.40 ? 'text-danger font-bold' : 'text-warning font-bold') : 'text-tertiary';
+
+            return `
+                <div class="waterfall-signal-item ${isActive ? 'is-active' : ''}" data-signal-name="${escapeHtml(key)}">
+                    <div class="signal-label-col">
+                        <span class="signal-status-dot ${dotClass}"></span>
+                        <span class="signal-label">${escapeHtml(label)}</span>
+                        <span class="signal-weight text-tertiary font-mono">(weight ${weight.toFixed(2)})</span>
+                    </div>
+                    <div class="signal-bar-col">
+                        <div class="signal-bar" role="progressbar" aria-valuenow="${contrib.toFixed(2)}" aria-valuemin="0" aria-valuemax="1" aria-label="${escapeHtml(label)} contribution">
+                            <div class="signal-bar-fill ${fillClass}" style="width: ${percent}%;"></div>
+                        </div>
+                    </div>
+                    <div class="signal-values-col font-mono">
+                        <span class="signal-raw">Raw: <strong>${rawScore.toFixed(2)}</strong></span>
+                        <span class="signal-contrib ${contribClass}">Contrib: <strong>+${contrib.toFixed(2)}</strong></span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        return `
+            <div class="waterfall-header">
+                <div class="waterfall-header-title">
+                    <span class="waterfall-title-text font-mono">SIGNAL RISK BREAKDOWN</span>
+                    <span class="waterfall-formula text-tertiary font-mono">Composite = min(1.0, &Sigma; active weights)</span>
+                </div>
+                <div class="waterfall-composite-pill font-mono">
+                    <span class="text-tertiary">Entity Risk:</span>
+                    <span class="waterfall-composite-score font-bold font-mono">${totalScore.toFixed(2)}</span>
+                    <span class="badge badge-severity badge-${entitySev.toLowerCase()}">${escapeHtml(entitySev)}</span>
+                </div>
+            </div>
+            <div class="waterfall-signals-grid">
+                ${itemsHtml}
+            </div>
+        `;
+    }
+}
+
+window.SignalWaterfall = SignalWaterfall;

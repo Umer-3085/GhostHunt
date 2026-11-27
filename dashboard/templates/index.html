@@ -18,9 +18,14 @@
             <div class="banner-meta">
                 {% for cat, meta in baseline_meta.items() %}
                     {% if meta.state == 'CANDIDATE_REVIEW' %}
-                    <span class="badge badge-candidate">
-                        <strong>{{ cat|upper }}:</strong> {{ meta.candidate_entry_count }} candidate entries awaiting review
-                    </span>
+                    <div style="display:inline-flex; align-items:center; gap:var(--space-xs); margin-right:var(--space-sm);">
+                        <span class="badge badge-candidate">
+                            <strong>{{ cat|upper }}:</strong> {{ meta.candidate_entry_count }} candidate entries awaiting review
+                        </span>
+                        <button type="button" class="btn btn-sm btn-secondary btn-review-diff" onclick="BaselineVisualDiff.openDiff('{{ cat }}')">
+                            🔍 Review Diff
+                        </button>
+                    </div>
                     {% endif %}
                 {% endfor %}
             </div>
@@ -94,20 +99,19 @@
         </div>
     </section>
 
-    <!-- 2b. Scheduler Mini-Timeline Card -->
-    <section class="card scheduler-timeline-card" id="scheduler-timeline-card">
+    <!-- 2b. Scheduler Timeline Card (Last 10 Scans Horizontal Timeline) -->
+    <section class="card timeline-card scheduler-timeline-card" id="timeline-card">
         <div class="card-header">
             <div class="card-header-title">
                 <h2 class="card-title">Scheduler Activity Timeline</h2>
                 <span class="badge badge-secondary" id="sched-timeline-interval">Every {% if scheduler_running %}{{ config_interval_seconds|default('—') }}s{% else %}—{% endif %}</span>
             </div>
             <div class="sched-timeline-eta-wrap">
-                <span class="sched-timeline-next" id="sched-timeline-next">Loading…</span>
+                <span class="sched-timeline-next" id="sched-timeline-next">Next Scan: Calculating…</span>
             </div>
         </div>
-        <div class="sched-timeline-dots" id="sched-timeline-dots" aria-label="Last 5 scan results timeline">
-            <!-- Populated via JS from /api/scans/recent -->
-            <div class="sched-timeline-empty text-tertiary">Loading scan history…</div>
+        <div class="timeline-container" id="timeline-container" aria-label="Last 10 completed scans horizontal timeline">
+            <div class="timeline-empty text-tertiary">Loading scan timeline…</div>
         </div>
     </section>
 
@@ -166,14 +170,29 @@
                 <tbody id="entities-tbody">
                     {% for ent in entities %}
                     <tr class="process-row entity-row severity-{{ ent.risk_level|lower }}"
+                        id="entity-row-{{ loop.index }}"
                         data-severity="{{ ent.risk_level }}"
                         data-pid="{{ ent.pid if ent.pid is not none else '' }}"
                         data-score="{{ ent.score }}"
+                        data-signals="{{ ent.signals_triggered or '' }}"
+                        data-process-name="{{ ent.process_name }}"
+                        data-index="{{ loop.index }}"
+                        tabindex="0"
+                        role="button"
+                        aria-expanded="false"
+                        aria-controls="waterfall-panel-{{ loop.index }}"
                         data-search="{{ (ent.process_name ~ ' ' ~ (ent.pid if ent.pid is not none else '') ~ ' ' ~ (ent.signals_triggered or ''))|lower }}">
-                        <td>
-                            <span class="badge badge-severity badge-{{ ent.risk_level|lower }}">
-                                {{ ent.risk_level }}
-                            </span>
+                        <td class="cell-severity">
+                            <div class="severity-wrapper">
+                                <button type="button" class="waterfall-chevron-btn" aria-label="Toggle signal breakdown for {{ ent.process_name }}" tabindex="-1">
+                                    <svg class="waterfall-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                        <polyline points="6 9 12 15 18 9"></polyline>
+                                    </svg>
+                                </button>
+                                <span class="badge badge-severity badge-{{ ent.risk_level|lower }}">
+                                    {{ ent.risk_level }}
+                                </span>
+                            </div>
                         </td>
                         <td>
                             <div class="score-container">
@@ -217,6 +236,84 @@
                                 Evidence →
                             </a>
                             {% endif %}
+                        </td>
+                    </tr>
+                    <tr class="waterfall-row hidden" id="waterfall-row-{{ loop.index }}" data-waterfall-index="{{ loop.index }}" aria-hidden="true">
+                        <td colspan="7" class="waterfall-cell">
+                            <div class="waterfall-panel" id="waterfall-panel-{{ loop.index }}" role="region" aria-label="Signal breakdown for {{ ent.process_name }}">
+                                <div class="waterfall-header">
+                                    <div class="waterfall-header-title">
+                                        <span class="waterfall-title-text font-mono">SIGNAL RISK BREAKDOWN</span>
+                                        <span class="waterfall-formula text-tertiary font-mono">Composite = min(1.0, &Sigma; active weights)</span>
+                                    </div>
+                                    <div class="waterfall-composite-pill font-mono">
+                                        <span class="text-tertiary">Entity Risk:</span>
+                                        <span class="waterfall-composite-score font-bold font-mono">{{ "%.2f"|format(ent.score or 0.0) }}</span>
+                                        <span class="badge badge-severity badge-{{ ent.risk_level|lower }}">{{ ent.risk_level }}</span>
+                                    </div>
+                                </div>
+
+                                {% set active_signals = (ent.signals_triggered or '').split(',') %}
+                                {% set pv_active = 'process_view' in active_signals %}
+                                {% set per_active = 'persistence' in active_signals %}
+                                {% set sig_active = 'signature' in active_signals %}
+
+                                <div class="waterfall-signals-grid">
+                                    <!-- 1. Process Views (weight 0.40) -->
+                                    <div class="waterfall-signal-item {% if pv_active %}is-active{% endif %}" data-signal-name="process_view">
+                                        <div class="signal-label-col">
+                                            <span class="signal-status-dot {% if pv_active %}risk-dot-high{% else %}risk-dot-inactive{% endif %}"></span>
+                                            <span class="signal-label">Process Views</span>
+                                            <span class="signal-weight text-tertiary font-mono">(weight 0.40)</span>
+                                        </div>
+                                        <div class="signal-bar-col">
+                                            <div class="signal-bar" role="progressbar" aria-valuenow="{% if pv_active %}0.40{% else %}0.00{% endif %}" aria-valuemin="0" aria-valuemax="1" aria-label="Process Views contribution">
+                                                <div class="signal-bar-fill {% if pv_active %}fill-high severity-high{% else %}fill-inactive{% endif %}" style="width: {% if pv_active %}40{% else %}0{% endif %}%;"></div>
+                                            </div>
+                                        </div>
+                                        <div class="signal-values-col font-mono">
+                                            <span class="signal-raw">Raw: <strong>{% if pv_active %}1.00{% else %}0.00{% endif %}</strong></span>
+                                            <span class="signal-contrib {% if pv_active %}text-danger font-bold{% else %}text-tertiary{% endif %}">Contrib: <strong>{% if pv_active %}+0.40{% else %}+0.00{% endif %}</strong></span>
+                                        </div>
+                                    </div>
+
+                                    <!-- 2. Persistence (weight 0.30) -->
+                                    <div class="waterfall-signal-item {% if per_active %}is-active{% endif %}" data-signal-name="persistence">
+                                        <div class="signal-label-col">
+                                            <span class="signal-status-dot {% if per_active %}risk-dot-medium{% else %}risk-dot-inactive{% endif %}"></span>
+                                            <span class="signal-label">Persistence</span>
+                                            <span class="signal-weight text-tertiary font-mono">(weight 0.30)</span>
+                                        </div>
+                                        <div class="signal-bar-col">
+                                            <div class="signal-bar" role="progressbar" aria-valuenow="{% if per_active %}0.30{% else %}0.00{% endif %}" aria-valuemin="0" aria-valuemax="1" aria-label="Persistence contribution">
+                                                <div class="signal-bar-fill {% if per_active %}fill-medium severity-medium{% else %}fill-inactive{% endif %}" style="width: {% if per_active %}30{% else %}0{% endif %}%;"></div>
+                                            </div>
+                                        </div>
+                                        <div class="signal-values-col font-mono">
+                                            <span class="signal-raw">Raw: <strong>{% if per_active %}1.00{% else %}0.00{% endif %}</strong></span>
+                                            <span class="signal-contrib {% if per_active %}text-warning font-bold{% else %}text-tertiary{% endif %}">Contrib: <strong>{% if per_active %}+0.30{% else %}+0.00{% endif %}</strong></span>
+                                        </div>
+                                    </div>
+
+                                    <!-- 3. Signature (weight 0.30) -->
+                                    <div class="waterfall-signal-item {% if sig_active %}is-active{% endif %}" data-signal-name="signature">
+                                        <div class="signal-label-col">
+                                            <span class="signal-status-dot {% if sig_active %}risk-dot-medium{% else %}risk-dot-inactive{% endif %}"></span>
+                                            <span class="signal-label">Signature</span>
+                                            <span class="signal-weight text-tertiary font-mono">(weight 0.30)</span>
+                                        </div>
+                                        <div class="signal-bar-col">
+                                            <div class="signal-bar" role="progressbar" aria-valuenow="{% if sig_active %}0.30{% else %}0.00{% endif %}" aria-valuemin="0" aria-valuemax="1" aria-label="Signature contribution">
+                                                <div class="signal-bar-fill {% if sig_active %}fill-medium severity-medium{% else %}fill-inactive{% endif %}" style="width: {% if sig_active %}30{% else %}0{% endif %}%;"></div>
+                                            </div>
+                                        </div>
+                                        <div class="signal-values-col font-mono">
+                                            <span class="signal-raw">Raw: <strong>{% if sig_active %}1.00{% else %}0.00{% endif %}</strong></span>
+                                            <span class="signal-contrib {% if sig_active %}text-warning font-bold{% else %}text-tertiary{% endif %}">Contrib: <strong>{% if sig_active %}+0.30{% else %}+0.00{% endif %}</strong></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </td>
                     </tr>
                     {% endfor %}
@@ -337,96 +434,11 @@
 
 {% block scripts %}
 <script>
-// Scheduler mini-timeline
-async function loadSchedulerTimeline() {
-    try {
-        const res = await fetch('/api/scans/recent');
-        if (!res.ok) return;
-        const data = await res.json();
-        const scans = (data.scans || []).slice(0, 5).reverse(); // oldest first → newest right
-        const container = document.getElementById('sched-timeline-dots');
-        const nextEl = document.getElementById('sched-timeline-next');
-        if (!container) return;
-
-        if (scans.length === 0) {
-            container.innerHTML = '<div class="sched-timeline-empty text-tertiary">No completed scans yet</div>';
-            return;
-        }
-
-        const html = scans.map((s, i) => {
-            const isLast = i === scans.length - 1;
-            const statusClass = s.high_risk_count > 0 ? 'dot-high' : (s.status === 'COMPLETED' ? 'dot-ok' : 'dot-fail');
-            const dur = Number(s.scan_duration_ms || s.duration_ms || 0);
-            const findings = s.total_findings || 0;
-            const high = s.high_risk_count || 0;
-            const scanTime = s.scan_time || s.started_at || '';
-            const statusBadge = high > 0
-                ? `<span class="badge badge-severity badge-high">${high} HIGH</span>`
-                : (s.status === 'COMPLETED'
-                    ? `<span class="badge badge-severity badge-low">CLEAN</span>`
-                    : `<span class="badge badge-severity badge-failed">${s.status}</span>`);
-
-            return `
-                <div class="sched-dot-wrap ${isLast ? 'sched-dot-latest' : ''}">
-                    <div class="sched-dot ${statusClass}" 
-                         tabindex="0" 
-                         role="button" 
-                         aria-label="Scan #${s.id}: ${high > 0 ? high + ' High' : s.status}">
-                    </div>
-                    <span class="sched-dot-label">#${s.id}</span>
-                    <div class="sched-tooltip" role="tooltip">
-                        <div class="sched-tooltip-header">
-                            <span class="sched-tooltip-id">Scan #${s.id}</span>
-                            ${statusBadge}
-                        </div>
-                        <div class="sched-tooltip-grid">
-                            <div class="sched-tooltip-row">
-                                <span class="sched-tooltip-k">Duration</span>
-                                <span class="sched-tooltip-v">${dur.toFixed(1)} ms</span>
-                            </div>
-                            <div class="sched-tooltip-row">
-                                <span class="sched-tooltip-k">Findings</span>
-                                <span class="sched-tooltip-v">${findings}</span>
-                            </div>
-                            <div class="sched-tooltip-row">
-                                <span class="sched-tooltip-k">High Risk</span>
-                                <span class="sched-tooltip-v ${high > 0 ? 'text-danger font-bold' : ''}">${high}</span>
-                            </div>
-                        </div>
-                        <div class="sched-tooltip-footer">${scanTime ? escapeHtmlInline(scanTime) : 'Completed'}</div>
-                    </div>
-                </div>
-                ${i < scans.length - 1 ? '<div class="sched-timeline-line"></div>' : ''}
-            `;
-        }).join('');
-        container.innerHTML = html;
-
-        // Update ETA in timeline card
-        const statusRes = await fetch('/api/status');
-        if (!statusRes.ok) return;
-        const statusData = await statusRes.json();
-        if (nextEl && statusData.scheduler?.is_running) {
-            const interval = statusData.scheduler.interval_seconds || 300;
-            let lastMs = null;
-            if (statusData.latest_scan?.scan_time) {
-                lastMs = new Date(statusData.latest_scan.scan_time.replace(' ', 'T')).getTime();
-            } else if (statusData.scheduler.last_scan_time) {
-                lastMs = statusData.scheduler.last_scan_time * 1000;
-            }
-            if (lastMs) {
-                const remaining = Math.max(0, Math.round(interval - (Date.now() - lastMs) / 1000));
-                nextEl.textContent = remaining > 0 ? `Next in ${remaining}s` : 'Overdue';
-                nextEl.className = remaining === 0 ? 'sched-timeline-next text-warning' : 'sched-timeline-next';
-                // keep updating
-                setTimeout(() => {
-                    const r2 = Math.max(0, remaining - 1);
-                    if (nextEl) nextEl.textContent = r2 > 0 ? `Next in ${r2}s` : 'Overdue';
-                }, 1000);
-            }
-        } else if (nextEl) {
-            nextEl.textContent = 'Scheduler inactive';
-        }
-    } catch (e) { /* silent */ }
+// Scheduler timeline initialized via TimelineCard component in dashboard.js
+function loadSchedulerTimeline() {
+    if (window.TimelineCard) {
+        TimelineCard.load();
+    }
 }
 
 // Baseline diff viewer

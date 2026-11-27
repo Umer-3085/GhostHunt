@@ -579,6 +579,29 @@ def get_scan_history(limit: int = 50, db_path: Optional[str] = None) -> List[Dic
         return [dict(r) for r in rows]
 
 
+def get_recent_completed_scans(limit: int = 10, db_path: Optional[str] = None) -> List[Dict[str, Any]]:
+    """
+    Retrieves the last N completed scans with summary statistics and entity counts
+    for the horizontal timeline card.
+    """
+    with get_connection(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT s.*,
+                   COALESCE((SELECT COUNT(*) FROM risk_scores r WHERE r.scan_id = s.id), 0) AS entity_count,
+                   COALESCE((SELECT COUNT(*) FROM risk_scores r WHERE r.scan_id = s.id AND r.risk_level = 'HIGH'), 0) AS high_count,
+                   COALESCE((SELECT COUNT(*) FROM risk_scores r WHERE r.scan_id = s.id AND r.risk_level = 'MEDIUM'), 0) AS med_count,
+                   COALESCE((SELECT COUNT(*) FROM risk_scores r WHERE r.scan_id = s.id AND r.risk_level = 'LOW'), 0) AS low_count
+            FROM scan_history s
+            WHERE s.status = 'COMPLETED'
+            ORDER BY s.id DESC
+            LIMIT ?;
+            """,
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
 # ---------------------------------------------------------------------------
 # Findings Data Access Layer
 # ---------------------------------------------------------------------------

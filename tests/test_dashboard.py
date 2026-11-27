@@ -76,6 +76,13 @@ class TestDashboardViews(unittest.TestCase):
         self.assertIn("HIGH", html)
         self.assertIn("LOW", html)
         self.assertIn("badge-high", html)
+        self.assertIn("timeline-card", html)
+        self.assertIn("timeline-container", html)
+        self.assertIn("Scheduler Activity Timeline", html)
+        self.assertIn("waterfall-row", html)
+        self.assertIn("waterfall-panel", html)
+        self.assertIn("signal-bar", html)
+        self.assertIn("signal-bar-fill", html)
 
     def test_03_candidate_baseline_review_banner(self):
         """When a persistence category is in CANDIDATE_REVIEW, a review banner is displayed."""
@@ -155,6 +162,86 @@ class TestDashboardViews(unittest.TestCase):
         html = resp.get_data(as_text=True)
         self.assertIn('id="reset-modal"', html)
         self.assertIn("Confirm Persistence Baseline Reset", html)
+
+    def test_08_signal_waterfall_per_entity_visualization(self):
+        """Signal Waterfall accordion rows and bars render per entity with exact weights and labels."""
+        sid = db.start_scan(db_path=self.db_path)
+        risk_entries = [
+            {
+                "item_key": "proc:1234:malware.exe",
+                "process_name": "malware.exe",
+                "pid": 1234,
+                "score": 0.70,
+                "risk_level": "HIGH",
+                "signals_triggered": "process_view,persistence",
+            },
+            {
+                "item_key": "proc:9999:clean.exe",
+                "process_name": "clean.exe",
+                "pid": 9999,
+                "score": 0.0,
+                "risk_level": "LOW",
+                "signals_triggered": "",
+            },
+        ]
+        db.insert_risk_scores(sid, risk_entries, db_path=self.db_path)
+        db.complete_scan(sid, total_findings=2, high_risk_count=1, duration_ms=50.0, db_path=self.db_path)
+
+        resp = self.client.get("/")
+        self.assertEqual(resp.status_code, 200)
+        html = resp.get_data(as_text=True)
+
+        # 1. Structure and accessibility
+        self.assertIn('aria-controls="waterfall-panel-1"', html)
+        self.assertIn('role="button"', html)
+        self.assertIn('aria-expanded="false"', html)
+        self.assertIn('class="waterfall-chevron-btn"', html)
+        self.assertIn('class="waterfall-row hidden"', html)
+        self.assertIn('class="waterfall-panel"', html)
+
+        # 2. 3 Signals and weights
+        self.assertIn("Process Views", html)
+        self.assertIn("(weight 0.40)", html)
+        self.assertIn("Persistence", html)
+        self.assertIn("(weight 0.30)", html)
+        self.assertIn("Signature", html)
+        self.assertIn("(weight 0.30)", html)
+
+        # 3. Bar styling and raw/contrib metrics
+        self.assertIn("signal-bar", html)
+        self.assertIn("signal-bar-fill", html)
+        self.assertIn("Contrib: <strong>+0.40</strong>", html)
+        self.assertIn("Contrib: <strong>+0.30</strong>", html)
+        self.assertIn("SIGNAL RISK BREAKDOWN", html)
+
+    def test_09_system_findings_candidate_review_diff_button_and_modal(self):
+        """When a persistence category is in CANDIDATE_REVIEW, /system-findings renders 'Review Diff' button and modal."""
+        # 1. Transition registry category to CANDIDATE_REVIEW
+        db.capture_candidate_baseline_atomic(
+            "registry",
+            [{"entry_key": "RunKey1", "entry_name": "RunKey1", "entry_value": "C:\\run.exe", "fingerprint": "fp1"}],
+            db_path=self.db_path,
+        )
+
+        resp = self.client.get("/system-findings")
+        self.assertEqual(resp.status_code, 200)
+        html = resp.get_data(as_text=True)
+
+        # 2. Check Candidate Review section on /system-findings
+        self.assertIn("Candidate Baseline Review Required", html)
+        self.assertIn("btn-review-diff", html)
+        self.assertIn("Review Diff", html)
+        self.assertIn("BaselineVisualDiff.openDiff('registry')", html)
+        self.assertIn("Accept Baseline", html)
+
+        # 3. Check Baseline Visual Diff Modal present in DOM
+        self.assertIn('id="baseline-diff-modal"', html)
+        self.assertIn('class="diff-panel"', html)
+        self.assertIn('class="diff-side diff-side-left"', html)
+        self.assertIn('class="diff-side diff-side-right"', html)
+        self.assertIn("Current System State", html)
+        self.assertIn("Proposed Baseline", html)
+        self.assertIn('id="btn-accept-diff-baseline"', html)
 
 
 if __name__ == "__main__":

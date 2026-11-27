@@ -296,6 +296,66 @@ class TestRestApi(unittest.TestCase):
             resp_reset = self.client.post("/api/baseline/reset", json={"confirm": True})
             self.assertEqual(resp_reset.status_code, 409)
 
+    def test_17_recent_scans_returns_completed_only(self):
+        """GET /api/scans/recent returns up to 10 completed scans with entity counts."""
+        # Insert completed scans and failed scans
+        sid1 = db.start_scan(db_path=self.db_path)
+        db.complete_scan(sid1, total_findings=2, high_risk_count=1, duration_ms=45.0, db_path=self.db_path)
+
+        sid_fail = db.start_scan(db_path=self.db_path)
+        db.fail_scan(sid_fail, "Simulated failure", db_path=self.db_path)
+
+        sid2 = db.start_scan(db_path=self.db_path)
+        db.complete_scan(sid2, total_findings=0, high_risk_count=0, duration_ms=30.0, db_path=self.db_path)
+
+        resp = self.client.get("/api/scans/recent")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["success"])
+        self.assertEqual(data["count"], 2)
+        scans = data["scans"]
+        self.assertEqual(len(scans), 2)
+        self.assertEqual(scans[0]["id"], sid2)
+        self.assertEqual(scans[1]["id"], sid1)
+        for s in scans:
+            self.assertEqual(s["status"], "COMPLETED")
+            self.assertIn("entity_count", s)
+            self.assertIn("scan_duration_ms", s)
+
+    def test_19_baseline_current_and_compare_endpoints(self):
+        """GET /api/baseline/current and /api/baseline/compare return valid enumeration and diff structures."""
+        # 1. Capture candidate baseline
+        candidates = [
+            {"entry_key": "RunKey1", "entry_name": "RunKey1", "entry_value": "C:\\malware.exe", "fingerprint": "fp1"},
+            {"entry_key": "RunKey2", "entry_name": "RunKey2", "entry_value": "C:\\clean.exe", "fingerprint": "fp2"},
+        ]
+        db.capture_candidate_baseline_atomic("registry", candidates, db_path=self.db_path)
+
+        # 2. Test /api/baseline/current
+        resp_curr = self.client.get("/api/baseline/current?category=registry")
+        self.assertEqual(resp_curr.status_code, 200)
+        data_curr = resp_curr.get_json()
+        self.assertTrue(data_curr["success"])
+        self.assertEqual(data_curr["category"], "registry")
+        self.assertIn("entries", data_curr)
+
+        # 3. Test /api/baseline/compare
+        resp_comp = self.client.get("/api/baseline/compare?category=registry")
+        self.assertEqual(resp_comp.status_code, 200)
+        data_comp = resp_comp.get_json()
+        self.assertTrue(data_comp["success"])
+        self.assertEqual(data_comp["category"], "registry")
+        self.assertIn("diff", data_comp)
+        self.assertIn("counts", data_comp)
+        self.assertIn("added", data_comp["diff"])
+        self.assertIn("removed", data_comp["diff"])
+        self.assertIn("modified", data_comp["diff"])
+        self.assertIn("unchanged", data_comp["diff"])
+
+        # 4. Invalid category check
+        resp_invalid = self.client.get("/api/baseline/compare?category=invalid_cat")
+        self.assertEqual(resp_invalid.status_code, 400)
+
 
 if __name__ == "__main__":
     unittest.main()

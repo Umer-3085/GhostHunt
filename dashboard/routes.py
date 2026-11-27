@@ -537,6 +537,138 @@ def api_baseline_accepted():
     }), 200
 
 
+def get_current_persistence_entries(category: str) -> Dict[str, Dict[str, Any]]:
+    """Helper to perform live enumeration for a persistence category."""
+    import core.persistence as persistence
+    try:
+        if category == "registry":
+            success, entries, _ = persistence.read_registry_run_keys()
+            return entries if success else {}
+        elif category == "tasks":
+            success, entries, _ = persistence.read_scheduled_tasks()
+            return entries if success else {}
+        elif category == "services":
+            success, entries, _ = persistence.read_windows_services()
+            return entries if success else {}
+    except Exception as ex:
+        logger.warning("Live enumeration for %s failed: %s", category, ex)
+    return {}
+
+
+@dashboard_bp.route("/api/baseline/current", methods=["GET"])
+def api_baseline_current():
+    """Returns live enumeration of current persistence items for a category."""
+    category = request.args.get("category")
+    if not category or category not in config.PERSISTENCE_CATEGORIES:
+        abort(400, description=f"Invalid or missing category: must be one of {config.PERSISTENCE_CATEGORIES}")
+
+    entries_map = get_current_persistence_entries(category)
+    entries_list = [dict(v) for v in entries_map.values()]
+    return jsonify({
+        "success": True,
+        "category": category,
+        "count": len(entries_list),
+        "entries": entries_list,
+    }), 200
+
+
+@dashboard_bp.route("/api/baseline/compare", methods=["GET"])
+def api_baseline_compare():
+    """
+    Computes visual side-by-side diff comparing Current System State vs Proposed Baseline (Candidate).
+    Categorizes into ADDED, REMOVED, MODIFIED, and UNCHANGED.
+    """
+    db_path = get_active_db_path()
+    category = request.args.get("category")
+    if not category or category not in config.PERSISTENCE_CATEGORIES:
+        abort(400, description=f"Invalid or missing category: must be one of {config.PERSISTENCE_CATEGORIES}")
+
+    # 1. Fetch Candidate baseline entries from DB
+    candidates_dict = db.get_candidate_baseline(category=category, db_path=db_path)
+    cand_map = {dict(v).get("entry_key"): dict(v) for v in candidates_dict.values() if dict(v).get("entry_key")}
+
+    # 2. Enumerate Current System State (Live)
+    curr_map = get_current_persistence_entries(category)
+
+    # 3. Categorize into Added, Removed, Modified, Unchanged
+    added = []      # in candidate, not in current
+    removed = []    # in current, not in candidate
+    modified = []   # in both, different value
+    unchanged = []  # in both, same value
+
+    cand_keys = set(cand_map.keys())
+    curr_keys = set(curr_map.keys())
+
+    for k in sorted(cand_keys - curr_keys):
+        c = cand_map[k]
+        added.append({
+            "entry_type": category,
+            "entry_key": k,
+            "entry_value": c.get("entry_value", ""),
+            "fingerprint": c.get("fingerprint", ""),
+            "status": "added",
+            "source": "candidate",
+        })
+
+    for k in sorted(curr_keys - cand_keys):
+        cur = curr_map[k]
+        removed.append({
+            "entry_type": category,
+            "entry_key": k,
+            "entry_value": cur.get("entry_value", ""),
+            "fingerprint": cur.get("fingerprint", ""),
+            "status": "removed",
+            "source": "current",
+        })
+
+    for k in sorted(cand_keys & curr_keys):
+        c = cand_map[k]
+        cur = curr_map[k]
+        c_val = str(c.get("entry_value", "")).strip()
+        cur_val = str(cur.get("entry_value", "")).strip()
+        c_fp = c.get("fingerprint", "")
+        cur_fp = cur.get("fingerprint", "")
+
+        if c_val != cur_val or (c_fp and cur_fp and c_fp != cur_fp):
+            modified.append({
+                "entry_type": category,
+                "entry_key": k,
+                "current_value": cur_val,
+                "candidate_value": c_val,
+                "current_fingerprint": cur_fp,
+                "candidate_fingerprint": c_fp,
+                "status": "modified",
+            })
+        else:
+            unchanged.append({
+                "entry_type": category,
+                "entry_key": k,
+                "entry_value": c_val,
+                "status": "unchanged",
+            })
+
+    return jsonify({
+        "success": True,
+        "category": category,
+        "counts": {
+            "candidate": len(cand_map),
+            "current": len(curr_map),
+            "added": len(added),
+            "removed": len(removed),
+            "modified": len(modified),
+            "unchanged": len(unchanged),
+        },
+        "current_entries": list(curr_map.values()),
+        "candidate_entries": list(cand_map.values()),
+        "diff": {
+            "added": added,
+            "removed": removed,
+            "modified": modified,
+            "unchanged": unchanged,
+        },
+    }), 200
+
+
 @dashboard_bp.route("/api/baseline/diff", methods=["GET"])
 def api_baseline_diff():
     """
@@ -758,6 +890,10 @@ def view_system_findings():
     threats = [f for f in system_findings if f.get("finding_type") == "threat"]
     diagnostics = [f for f in system_findings if f.get("finding_type") == "diagnostic"]
 
+    baseline_meta = db.get_all_baseline_meta(db_path=db_path)
+    for cat_data in baseline_meta.values():
+        cat_data["state"] = cat_data.get("baseline_state", "NOT_INITIALIZED")
+
     return render_template(
         "process_detail.html",
         pid=None,
@@ -765,6 +901,7 @@ def view_system_findings():
         scan_id=scan_id,
         threats=threats,
         diagnostics=diagnostics,
+        baseline_meta=baseline_meta,
     )
 
 

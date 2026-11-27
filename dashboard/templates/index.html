@@ -18,9 +18,14 @@
             <div class="banner-meta">
                 {% for cat, meta in baseline_meta.items() %}
                     {% if meta.state == 'CANDIDATE_REVIEW' %}
-                    <span class="badge badge-candidate">
-                        <strong>{{ cat|upper }}:</strong> {{ meta.candidate_entry_count }} candidate entries awaiting review
-                    </span>
+                    <div style="display:inline-flex; align-items:center; gap:var(--space-xs); margin-right:var(--space-sm);">
+                        <span class="badge badge-candidate">
+                            <strong>{{ cat|upper }}:</strong> {{ meta.candidate_entry_count }} candidate entries awaiting review
+                        </span>
+                        <button type="button" class="btn btn-sm btn-secondary btn-review-diff" onclick="BaselineVisualDiff.openDiff('{{ cat }}')">
+                            🔍 Review Diff
+                        </button>
+                    </div>
                     {% endif %}
                 {% endfor %}
             </div>

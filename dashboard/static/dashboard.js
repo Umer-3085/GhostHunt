@@ -489,6 +489,9 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             closeResetModal();
+            if (window.BaselineVisualDiff) {
+                BaselineVisualDiff.closeModal();
+            }
         }
     });
 
@@ -1717,3 +1720,232 @@ class SignalWaterfall {
 }
 
 window.SignalWaterfall = SignalWaterfall;
+
+/**
+ * BaselineVisualDiff — Side-by-Side Candidate vs Current State Comparison Modal
+ * Fetches live enumeration and candidate records, renders visual highlights for
+ * Added (green), Removed (red), and Modified (yellow) entries, and handles baseline acceptance.
+ */
+class BaselineVisualDiff {
+    static currentCategory = null;
+
+    static async openDiff(category) {
+        this.currentCategory = category;
+        const modal = document.getElementById('baseline-diff-modal');
+        if (!modal) return;
+
+        const catTitle = document.getElementById('diff-modal-category');
+        if (catTitle) catTitle.textContent = (category || '').toUpperCase();
+
+        const loading = document.getElementById('diff-loading');
+        const errorEl = document.getElementById('diff-error');
+        const panel = document.getElementById('diff-panel-container');
+        const summary = document.getElementById('diff-summary-badges');
+
+        if (loading) loading.style.display = 'block';
+        if (errorEl) errorEl.style.display = 'none';
+        if (panel) panel.style.display = 'none';
+        if (summary) summary.innerHTML = '';
+
+        modal.classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
+
+        try {
+            const resp = await fetch(`/api/baseline/compare?category=${encodeURIComponent(category)}`);
+            if (!resp.ok) {
+                const errData = await resp.json().catch(() => ({}));
+                throw new Error(errData.message || `HTTP ${resp.status}`);
+            }
+            const data = await resp.json();
+            this.renderDiff(data);
+        } catch (err) {
+            if (loading) loading.style.display = 'none';
+            if (errorEl) {
+                errorEl.style.display = 'block';
+                const msg = document.getElementById('diff-error-msg');
+                if (msg) msg.textContent = `Failed to compute baseline comparison: ${err.message}`;
+            }
+        }
+    }
+
+    static closeModal() {
+        const modal = document.getElementById('baseline-diff-modal');
+        if (modal) modal.classList.add('hidden');
+        document.body.style.overflow = '';
+        this.currentCategory = null;
+    }
+
+    static async acceptCurrentCategory() {
+        if (!this.currentCategory) return;
+        const btn = document.getElementById('btn-accept-diff-baseline');
+        const oldText = btn ? btn.textContent : '';
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = 'Accepting…';
+        }
+
+        try {
+            const csrfToken = getCsrfToken();
+            const resp = await fetch('/api/baseline/accept', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({ category: this.currentCategory })
+            });
+
+            const data = await resp.json();
+            if (resp.ok && data.success) {
+                showToast(`Baseline for ${this.currentCategory.toUpperCase()} accepted successfully!`, 'success');
+                this.closeModal();
+                setTimeout(() => window.location.reload(), 800);
+            } else {
+                showToast(`Acceptance failed: ${data.message || 'Unknown error'}`, 'error');
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = oldText;
+                }
+            }
+        } catch (err) {
+            showToast(`Error accepting baseline: ${err.message}`, 'error');
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = oldText;
+            }
+        }
+    }
+
+    static renderDiff(data) {
+        const loading = document.getElementById('diff-loading');
+        const panel = document.getElementById('diff-panel-container');
+        if (loading) loading.style.display = 'none';
+        if (panel) panel.style.display = 'grid';
+
+        const diff = data.diff || { added: [], removed: [], modified: [], unchanged: [] };
+        const counts = data.counts || {};
+        const cat = data.category || 'item';
+
+        // Render summary badges in header
+        const summary = document.getElementById('diff-summary-badges');
+        if (summary) {
+            summary.innerHTML = `
+                <span class="badge badge-diff-added font-mono">+${diff.added.length} Added</span>
+                <span class="badge badge-diff-removed font-mono">-${diff.removed.length} Removed</span>
+                <span class="badge badge-diff-modified font-mono">~${diff.modified.length} Modified</span>
+                <span class="badge badge-secondary font-mono">${diff.unchanged.length} Unchanged</span>
+            `;
+        }
+
+        const currCount = document.getElementById('diff-current-count');
+        if (currCount) currCount.textContent = `${counts.current || 0} entries`;
+
+        const candCount = document.getElementById('diff-candidate-count');
+        if (candCount) candCount.textContent = `${counts.candidate || 0} entries`;
+
+        // Left: Current System State
+        const leftList = document.getElementById('diff-current-list');
+        if (leftList) {
+            const currentItems = [];
+
+            // 1. Removed entries (in current, not in candidate)
+            diff.removed.forEach(item => {
+                currentItems.push({
+                    key: item.entry_key,
+                    value: item.entry_value,
+                    status: 'removed',
+                    badge: 'REMOVED (CURRENT ONLY)',
+                    badgeClass: 'badge-diff-removed'
+                });
+            });
+
+            // 2. Modified entries in current
+            diff.modified.forEach(item => {
+                currentItems.push({
+                    key: item.entry_key,
+                    value: item.current_value,
+                    status: 'modified',
+                    badge: 'MODIFIED (LIVE VALUE)',
+                    badgeClass: 'badge-diff-modified'
+                });
+            });
+
+            // 3. Unchanged entries
+            diff.unchanged.forEach(item => {
+                currentItems.push({
+                    key: item.entry_key,
+                    value: item.entry_value,
+                    status: 'unchanged',
+                    badge: 'UNCHANGED',
+                    badgeClass: 'badge-secondary'
+                });
+            });
+
+            leftList.innerHTML = currentItems.length > 0
+                ? currentItems.map(item => this._renderEntryCard(item, cat)).join('')
+                : '<div class="diff-empty-state text-tertiary font-mono">No entries enumerated in current live state.</div>';
+        }
+
+        // Right: Proposed Baseline (Candidate)
+        const rightList = document.getElementById('diff-candidate-list');
+        if (rightList) {
+            const candidateItems = [];
+
+            // 1. Added entries (in candidate, not in current)
+            diff.added.forEach(item => {
+                candidateItems.push({
+                    key: item.entry_key,
+                    value: item.entry_value,
+                    status: 'added',
+                    badge: 'ADDED (PROPOSED)',
+                    badgeClass: 'badge-diff-added'
+                });
+            });
+
+            // 2. Modified entries in candidate
+            diff.modified.forEach(item => {
+                candidateItems.push({
+                    key: item.entry_key,
+                    value: item.candidate_value,
+                    status: 'modified',
+                    badge: 'MODIFIED (PROPOSED VALUE)',
+                    badgeClass: 'badge-diff-modified'
+                });
+            });
+
+            // 3. Unchanged entries
+            diff.unchanged.forEach(item => {
+                candidateItems.push({
+                    key: item.entry_key,
+                    value: item.entry_value,
+                    status: 'unchanged',
+                    badge: 'UNCHANGED',
+                    badgeClass: 'badge-secondary'
+                });
+            });
+
+            rightList.innerHTML = candidateItems.length > 0
+                ? candidateItems.map(item => this._renderEntryCard(item, cat)).join('')
+                : '<div class="diff-empty-state text-tertiary font-mono">No candidate entries found in database.</div>';
+        }
+    }
+
+    static _renderEntryCard(item, category) {
+        return `
+            <div class="diff-entry ${item.status}">
+                <div class="diff-entry-header">
+                    <span class="badge badge-entity-type">${escapeHtml(category || 'item')}</span>
+                    <span class="diff-entry-key font-mono font-bold" title="${escapeHtml(item.key)}">${escapeHtml(item.key)}</span>
+                    <span class="badge ${item.badgeClass} font-mono">${escapeHtml(item.badge)}</span>
+                </div>
+                ${item.value ? `
+                    <div class="diff-entry-value font-mono text-tertiary" title="${escapeHtml(item.value)}">
+                        <span class="text-subtle">Value:</span> ${escapeHtml(item.value)}
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    }
+}
+
+window.BaselineVisualDiff = BaselineVisualDiff;

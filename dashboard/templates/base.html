@@ -194,6 +194,78 @@
         </div>
     </div>
 
+    <!-- Baseline Visual Diff Modal (Side-by-Side Candidate vs Current State) -->
+    <div id="baseline-diff-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="diff-modal-title" onclick="if(event.target===this) BaselineVisualDiff.closeModal()">
+        <div class="modal-dialog modal-dialog-xl diff-modal-dialog">
+            <div class="modal-header diff-modal-header">
+                <div class="diff-header-titles">
+                    <h3 id="diff-modal-title" class="diff-modal-title">
+                        Baseline Visual Diff: <span id="diff-modal-category" class="text-accent font-mono"></span>
+                    </h3>
+                    <p id="diff-modal-subtitle" class="text-tertiary body-sm" style="margin: 2px 0 0;">
+                        Side-by-side comparison: Live System State vs. Proposed Baseline
+                    </p>
+                </div>
+                <div class="diff-header-badges" id="diff-summary-badges"></div>
+                <button type="button" class="btn btn-ghost btn-sm diff-close-btn" aria-label="Close modal" onclick="BaselineVisualDiff.closeModal()">✕</button>
+            </div>
+
+            <div class="modal-body diff-modal-body">
+                <!-- Loading State -->
+                <div id="diff-loading" class="diff-loading text-tertiary font-mono" style="display:none; text-align:center; padding: 40px;">
+                    <span class="spinner" style="margin-bottom: var(--space-sm);"></span>
+                    <p>Enumerating live system state and computing differential…</p>
+                </div>
+
+                <!-- Error State -->
+                <div id="diff-error" class="diff-error banner-warning" style="display:none; padding: var(--space-md); border-radius: var(--radius-sm); margin-bottom: var(--space-md);">
+                    <p class="text-danger font-bold" id="diff-error-msg"></p>
+                </div>
+
+                <!-- Side-by-Side Diff Container -->
+                <div id="diff-panel-container" class="diff-panel">
+                    <!-- Left: Current System State -->
+                    <div class="diff-side diff-side-left">
+                        <div class="diff-side-header">
+                            <div class="diff-side-title-wrap">
+                                <span class="diff-side-title font-bold">Current System State</span>
+                                <span class="text-tertiary caption font-mono">(Live Enumeration)</span>
+                            </div>
+                            <span class="badge badge-secondary" id="diff-current-count">0 items</span>
+                        </div>
+                        <div class="diff-entries-list" id="diff-current-list"></div>
+                    </div>
+
+                    <!-- Right: Proposed Baseline -->
+                    <div class="diff-side diff-side-right">
+                        <div class="diff-side-header">
+                            <div class="diff-side-title-wrap">
+                                <span class="diff-side-title font-bold">Proposed Baseline</span>
+                                <span class="text-tertiary caption font-mono">(Candidate Inventory)</span>
+                            </div>
+                            <span class="badge badge-candidate" id="diff-candidate-count">0 items</span>
+                        </div>
+                        <div class="diff-entries-list" id="diff-candidate-list"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer diff-modal-footer">
+                <div class="diff-legend">
+                    <span class="diff-legend-item"><span class="legend-swatch swatch-added"></span> Added (Proposed)</span>
+                    <span class="diff-legend-item"><span class="legend-swatch swatch-removed"></span> Removed (Current Only)</span>
+                    <span class="diff-legend-item"><span class="legend-swatch swatch-modified"></span> Modified</span>
+                </div>
+                <div class="diff-modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="BaselineVisualDiff.closeModal()">Reject / Keep Review</button>
+                    <button type="button" class="btn btn-success" id="btn-accept-diff-baseline" onclick="BaselineVisualDiff.acceptCurrentCategory()">
+                        ✓ Accept Baseline
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="{{ url_for('static', filename='dashboard.js') }}"></script>
     <script>
     // Theme toggle — define globally immediately

@@ -214,6 +214,35 @@ class TestDashboardViews(unittest.TestCase):
         self.assertIn("Contrib: <strong>+0.30</strong>", html)
         self.assertIn("SIGNAL RISK BREAKDOWN", html)
 
+    def test_09_system_findings_candidate_review_diff_button_and_modal(self):
+        """When a persistence category is in CANDIDATE_REVIEW, /system-findings renders 'Review Diff' button and modal."""
+        # 1. Transition registry category to CANDIDATE_REVIEW
+        db.capture_candidate_baseline_atomic(
+            "registry",
+            [{"entry_key": "RunKey1", "entry_name": "RunKey1", "entry_value": "C:\\run.exe", "fingerprint": "fp1"}],
+            db_path=self.db_path,
+        )
+
+        resp = self.client.get("/system-findings")
+        self.assertEqual(resp.status_code, 200)
+        html = resp.get_data(as_text=True)
+
+        # 2. Check Candidate Review section on /system-findings
+        self.assertIn("Candidate Baseline Review Required", html)
+        self.assertIn("btn-review-diff", html)
+        self.assertIn("Review Diff", html)
+        self.assertIn("BaselineVisualDiff.openDiff('registry')", html)
+        self.assertIn("Accept Baseline", html)
+
+        # 3. Check Baseline Visual Diff Modal present in DOM
+        self.assertIn('id="baseline-diff-modal"', html)
+        self.assertIn('class="diff-panel"', html)
+        self.assertIn('class="diff-side diff-side-left"', html)
+        self.assertIn('class="diff-side diff-side-right"', html)
+        self.assertIn("Current System State", html)
+        self.assertIn("Proposed Baseline", html)
+        self.assertIn('id="btn-accept-diff-baseline"', html)
+
 
 if __name__ == "__main__":
     unittest.main()

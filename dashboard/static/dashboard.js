@@ -82,6 +82,9 @@ function loadToastHistory() {
     } catch (e) {
         // Ignore parse errors
     }
+    // Clear old "busy" toasts on load so they don't reappear
+    toastHistory = toastHistory.filter(t => !t.message?.includes('in progress'));
+    localStorage.setItem('ghosthunt_toast_history', JSON.stringify(toastHistory));
 }
 
 // Clear toast history
@@ -136,6 +139,10 @@ const SCAN_BTN_IDLE_HTML = `
 // Trigger manual scan cycle (Asynchronous with 1s phase tracking)
 async function triggerManualScan() {
     const btn = document.getElementById('btn-manual-scan');
+    // Guard: prevent double-submit if scan already in progress
+    if (btn && (btn.disabled || scanProgressIntervalId)) {
+        return;
+    }
     if (btn) {
         btn.disabled = true;
         btn.innerHTML = '<span class="spin">⟳</span> <span>Scanning...</span>';
@@ -165,8 +172,8 @@ async function triggerManualScan() {
         const data = await response.json();
 
         if (response.status === 409) {
-            // Concurrency Guard Conflict
-            showToast(data.message || 'Another protected operation is currently active.', 'warning');
+            // Concurrency Guard Conflict — silent, progress panel shows state
+            console.debug('Manual scan 409: another operation in progress');
             stopScanProgressPolling();
             if (btn) {
                 btn.disabled = false;
@@ -209,7 +216,7 @@ async function acceptBaseline(category = null) {
         const data = await response.json();
 
         if (response.status === 409) {
-            showToast('Another protected operation is in progress. Please wait.', 'warning');
+            showToast('Busy — try again in a moment.', 'warning', 2000);
         } else if (response.ok && data.success) {
             showToast(`Baseline for ${category || 'all categories'} accepted as trusted reference.`, 'success', 4000, {
                 label: 'Reload',
@@ -249,7 +256,7 @@ async function executeResetBaseline() {
         const data = await response.json();
 
         if (response.status === 409) {
-            showToast('Another operation is in progress. Reset aborted.', 'warning');
+            showToast('Busy — try again in a moment.', 'warning', 2000);
         } else if (response.ok && data.success) {
             showToast('Baselines reset successfully to NOT_INITIALIZED.', 'success', 4000, {
                 label: 'Reload',
@@ -385,15 +392,21 @@ async function pollStatus() {
 
         const data = await response.json();
 
-        // Update scheduler status indicator
+        // Update scheduler status indicator — shows ACTIVE only when scan is actually running
         const schedIndicator = document.getElementById('scheduler-indicator');
         if (schedIndicator && data.scheduler) {
+            const scanActive = data.scan_progress && data.scan_progress.phase !== 'idle' && data.scan_progress.phase !== 'complete';
             if (data.scheduler.is_running) {
-                schedIndicator.className = 'scheduler-badge running';
-                schedIndicator.querySelector('.label').textContent = 'Scheduler: ACTIVE';
+                if (scanActive) {
+                    schedIndicator.className = 'scheduler-badge running';
+                    schedIndicator.querySelector('.label').textContent = 'Scanner: ACTIVE';
+                } else {
+                    schedIndicator.className = 'scheduler-badge idle';
+                    schedIndicator.querySelector('.label').textContent = 'Scheduler: STANDBY';
+                }
             } else {
                 schedIndicator.className = 'scheduler-badge idle';
-                schedIndicator.querySelector('.label').textContent = 'Scheduler: STANDBY';
+                schedIndicator.querySelector('.label').textContent = 'Scheduler: STOPPED';
             }
         }
 
@@ -427,6 +440,8 @@ async function pollStatus() {
                     // Apply live delta updates without full page reload
                     applyLiveDeltaUpdates(prevId, data.latest_completed_scan_id);
                 }
+                // Scan completed — stop any stale progress polling and reset button
+                stopScanProgressPolling();
             }
         }
     } catch (e) {
@@ -437,6 +452,9 @@ async function pollStatus() {
 // Start 5s interval and keyboard shortcuts on DOM load
 document.addEventListener('DOMContentLoaded', () => {
     loadToastHistory();
+
+    // Sync UI with server scan state on load
+    syncScanStateOnLoad();
 
     // Show skeleton loaders on initial load for main dashboard
     if (window.location.pathname === '/') {
@@ -465,6 +483,37 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize keyboard shortcuts
     initKeyboardShortcuts();
 });
+
+// ===========================================================================
+// Sync UI with server scan state on page load
+// ===========================================================================
+async function syncScanStateOnLoad() {
+    try {
+        const response = await fetch('/api/scan/progress');
+        if (!response.ok) return;
+        const data = await response.json();
+        const progress = data.progress;
+        if (progress && progress.phase !== 'idle' && progress.phase !== 'complete') {
+            // Server scan is running — start progress polling and disable button
+            const btn = document.getElementById('btn-manual-scan');
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spin">⟳</span> <span>Scanning...</span>';
+            }
+            startScanProgressPolling();
+            updateScanProgressPanel(progress);
+        } else {
+            // No scan running — ensure button enabled
+            const btn = document.getElementById('btn-manual-scan');
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = SCAN_BTN_IDLE_HTML;
+            }
+        }
+    } catch (e) {
+        // Silent failure — button stays enabled by default
+    }
+}
 
 // ===========================================================================
 // Scan Progress Panel (Day 2)
@@ -579,6 +628,21 @@ function stopScanProgressPolling() {
         btn.innerHTML = SCAN_BTN_IDLE_HTML;
     }
 }
+
+// Safety net: ensure button state matches actual scan state every 5s
+setInterval(() => {
+    const btn = document.getElementById('btn-manual-scan');
+    if (!btn) return;
+    // If no progress polling active and no scan in progress per UI, ensure button enabled
+    if (!scanProgressIntervalId && !scanProgressDismissTimer) {
+        const panel = document.getElementById('scan-progress-panel');
+        const isScanActive = panel && panel.classList.contains('visible');
+        if (!isScanActive && btn.disabled) {
+            btn.disabled = false;
+            btn.innerHTML = SCAN_BTN_IDLE_HTML;
+        }
+    }
+}, 5000);
 
 // ===========================================================================
 // Notification Bell (Day 2)

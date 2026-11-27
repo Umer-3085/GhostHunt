@@ -1220,8 +1220,8 @@ const TimelineCard = {
                         </div>
                     </div>
 
-                    <!-- Interactive Linear Tooltip -->
-                    <div class="sched-tooltip timeline-tooltip" role="tooltip">
+                    <!-- Hidden Data Payload for Floating Tooltip -->
+                    <div class="timeline-tooltip-data" style="display:none;" aria-hidden="true">
                         <div class="sched-tooltip-header">
                             <span class="sched-tooltip-id font-mono">Scan #${s.id}</span>
                             ${riskBadge}
@@ -1274,8 +1274,60 @@ const TimelineCard = {
             </div>
         `;
 
-        // Interactive click on scan items navigates to scan snapshot in history
+        // Ensure floating tooltip element exists on timeline card (outside scroll container)
+        const card = document.getElementById('timeline-card') || container.closest('.card') || container;
+        let floatingTooltip = document.getElementById('timeline-floating-tooltip');
+        if (!floatingTooltip) {
+            floatingTooltip = document.createElement('div');
+            floatingTooltip.id = 'timeline-floating-tooltip';
+            floatingTooltip.className = 'sched-tooltip timeline-floating-tooltip';
+            floatingTooltip.setAttribute('role', 'tooltip');
+            card.appendChild(floatingTooltip);
+        }
+
+        const showFloatingTooltip = (item) => {
+            const dataEl = item.querySelector('.timeline-tooltip-data');
+            if (!dataEl || !floatingTooltip) return;
+
+            floatingTooltip.innerHTML = dataEl.innerHTML;
+            const cardRect = card.getBoundingClientRect();
+            const itemRect = item.getBoundingClientRect();
+
+            // Center horizontally over item relative to card
+            const itemCenterInCard = itemRect.left - cardRect.left + (itemRect.width / 2);
+            floatingTooltip.style.left = `${itemCenterInCard}px`;
+
+            // Position above item: card's bottom minus item's top
+            const bottomPos = cardRect.bottom - itemRect.top + 10;
+            floatingTooltip.style.bottom = `${bottomPos}px`;
+
+            // Edge clamping relative to card width
+            floatingTooltip.classList.remove('clamped-left', 'clamped-right');
+            const tooltipHalfWidth = 130;
+            if (itemCenterInCard < tooltipHalfWidth) {
+                floatingTooltip.style.left = `${tooltipHalfWidth}px`;
+                floatingTooltip.classList.add('clamped-left');
+            } else if (itemCenterInCard > cardRect.width - tooltipHalfWidth) {
+                floatingTooltip.style.left = `${cardRect.width - tooltipHalfWidth}px`;
+                floatingTooltip.classList.add('clamped-right');
+            }
+
+            floatingTooltip.style.opacity = '1';
+            floatingTooltip.style.visibility = 'visible';
+        };
+
+        const hideFloatingTooltip = () => {
+            if (!floatingTooltip) return;
+            floatingTooltip.style.opacity = '0';
+            floatingTooltip.style.visibility = 'hidden';
+        };
+
+        // Interactive hover and click listeners
         container.querySelectorAll('.timeline-item:not(.timeline-item-next)').forEach(item => {
+            item.addEventListener('mouseenter', () => showFloatingTooltip(item));
+            item.addEventListener('mouseleave', hideFloatingTooltip);
+            item.addEventListener('focus', () => showFloatingTooltip(item));
+            item.addEventListener('blur', hideFloatingTooltip);
             item.addEventListener('click', () => {
                 const scanId = item.getAttribute('data-scan-id');
                 if (scanId) {
@@ -1292,6 +1344,9 @@ const TimelineCard = {
                 }
             });
         });
+
+        // Hide floating tooltip when the timeline container scrolls horizontally
+        container.addEventListener('scroll', hideFloatingTooltip, { passive: true });
     },
 
     updateEta(statusData) {

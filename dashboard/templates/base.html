@@ -210,6 +210,13 @@
                 <button type="button" class="btn btn-ghost btn-sm diff-close-btn" aria-label="Close modal" onclick="BaselineVisualDiff.closeModal()">✕</button>
             </div>
 
+            <!-- Category Switcher Tabs -->
+            <div class="diff-category-nav" style="display:flex; gap:var(--space-xs); padding: var(--space-xs) var(--space-lg); background: var(--color-surface-2); border-bottom: 1px solid var(--color-hairline);">
+                <button type="button" class="btn btn-sm btn-secondary diff-tab-btn" id="diff-tab-registry" onclick="BaselineVisualDiff.openDiff('registry')">📁 Registry Run Keys</button>
+                <button type="button" class="btn btn-sm btn-secondary diff-tab-btn" id="diff-tab-task" onclick="BaselineVisualDiff.openDiff('task')">⏰ Scheduled Tasks</button>
+                <button type="button" class="btn btn-sm btn-secondary diff-tab-btn" id="diff-tab-service" onclick="BaselineVisualDiff.openDiff('service')">⚙ Windows Services</button>
+            </div>
+
             <div class="modal-body diff-modal-body">
                 <!-- Loading State -->
                 <div id="diff-loading" class="diff-loading text-tertiary font-mono" style="display:none; text-align:center; padding: 40px;">

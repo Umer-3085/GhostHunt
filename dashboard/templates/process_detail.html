@@ -10,6 +10,13 @@
     <div class="detail-header">
         <div class="detail-header-top">
             <a href="/" class="btn btn-secondary btn-sm">← Back to Dashboard</a>
+            {% if is_system %}
+            <div class="header-actions" style="margin-left: auto;">
+                <button type="button" class="btn btn-sm btn-primary btn-review-diff" onclick="BaselineVisualDiff.openDiff('registry')">
+                    🔍 Review Baseline Diff
+                </button>
+            </div>
+            {% endif %}
             {% if entity %}
             <div class="entity-score-badge">
                 <span class="badge badge-severity badge-{{ entity.risk_level|lower }}">
@@ -32,6 +39,28 @@
     </div>
 
     {% if is_system and baseline_meta %}
+    <section class="card baseline-status-bar-card" style="margin-bottom: var(--space-md); padding: var(--space-sm) var(--space-md); background: var(--color-surface-2); border: 1px solid var(--color-hairline);">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:var(--space-sm);">
+            <div style="display:flex; align-items:center; gap:var(--space-md); flex-wrap:wrap;">
+                <span class="font-bold caption font-mono" style="letter-spacing:0.05em; color:var(--color-ink-secondary);">PERSISTENCE BASELINES:</span>
+                {% for cat, meta in baseline_meta.items() %}
+                <div class="baseline-cat-pill" style="display:inline-flex; align-items:center; gap:var(--space-xs); background:var(--color-surface-1); padding:3px 8px; border-radius:var(--radius-sm); border:1px solid var(--color-hairline);">
+                    <span class="badge badge-entity-type">{{ cat|upper }}</span>
+                    <span class="badge badge-severity {% if meta.state == 'CANDIDATE_REVIEW' %}badge-medium text-warning{% elif meta.state == 'ACCEPTED_TRUSTED' %}badge-low text-success{% else %}badge-secondary{% endif %}">
+                        {{ meta.state or 'NOT_INITIALIZED' }}
+                    </span>
+                    <button type="button" class="btn btn-xs btn-secondary btn-review-diff" onclick="BaselineVisualDiff.openDiff('{{ cat }}')">
+                        Diff
+                    </button>
+                </div>
+                {% endfor %}
+            </div>
+            <button type="button" class="btn btn-sm btn-primary btn-review-diff" onclick="BaselineVisualDiff.openDiff('registry')">
+                🔍 Review Baseline Diff
+            </button>
+        </div>
+    </section>
+
     {% set candidate_categories = [] %}
     {% for cat, meta in baseline_meta.items() %}
         {% if meta.state == 'CANDIDATE_REVIEW' or meta.baseline_state == 'CANDIDATE_REVIEW' %}
@@ -206,6 +235,11 @@
                         {{ t.severity|upper }}
                     </span>
                     <span class="finding-timestamp text-tertiary">{{ t.timestamp }}</span>
+                    {% if is_system or t.signal == 'persistence' %}
+                    <button type="button" class="btn btn-xs btn-secondary btn-review-diff" style="margin-left: auto;" onclick="BaselineVisualDiff.openDiff('registry')">
+                        🔍 Review Diff
+                    </button>
+                    {% endif %}
                 </div>
                 <div class="finding-body">
                     <div class="finding-evidence-text data-mono">
@@ -251,6 +285,11 @@
                     <span class="badge badge-secondary">{{ d.signal|upper }}</span>
                     <span class="badge badge-info">DIAGNOSTIC</span>
                     <span class="finding-timestamp text-tertiary">{{ d.timestamp }}</span>
+                    {% if is_system or d.signal == 'persistence' %}
+                    <button type="button" class="btn btn-xs btn-secondary btn-review-diff" style="margin-left: auto;" onclick="BaselineVisualDiff.openDiff('registry')">
+                        🔍 Review Diff
+                    </button>
+                    {% endif %}
                 </div>
                 <div class="finding-body">
                     <div class="finding-evidence-text data-mono">

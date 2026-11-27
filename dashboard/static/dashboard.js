@@ -1737,6 +1737,18 @@ class BaselineVisualDiff {
         const catTitle = document.getElementById('diff-modal-category');
         if (catTitle) catTitle.textContent = (category || '').toUpperCase();
 
+        // Update active category tab
+        const normCat = (category || 'registry').toLowerCase().replace(/s$/, '');
+        document.querySelectorAll('.diff-tab-btn').forEach(btn => {
+            btn.classList.remove('btn-primary', 'active');
+            btn.classList.add('btn-secondary');
+        });
+        const activeTab = document.getElementById(`diff-tab-${normCat}`);
+        if (activeTab) {
+            activeTab.classList.remove('btn-secondary');
+            activeTab.classList.add('btn-primary', 'active');
+        }
+
         const loading = document.getElementById('diff-loading');
         const errorEl = document.getElementById('diff-error');
         const panel = document.getElementById('diff-panel-container');

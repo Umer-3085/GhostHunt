@@ -537,17 +537,32 @@ def api_baseline_accepted():
     }), 200
 
 
+def normalize_category(category: Optional[str]) -> Optional[str]:
+    """Normalizes category name across singular and plural variants, returns None if invalid."""
+    if not category:
+        return None
+    c = category.lower().strip()
+    if c in ("tasks", "task"):
+        return "task"
+    if c in ("services", "service"):
+        return "service"
+    if c in ("registries", "registry"):
+        return "registry"
+    return None
+
+
 def get_current_persistence_entries(category: str) -> Dict[str, Dict[str, Any]]:
     """Helper to perform live enumeration for a persistence category."""
     import core.persistence as persistence
+    cat = normalize_category(category) or "registry"
     try:
-        if category == "registry":
+        if cat == "registry":
             success, entries, _ = persistence.read_registry_run_keys()
             return entries if success else {}
-        elif category == "tasks":
+        elif cat == "task":
             success, entries, _ = persistence.read_scheduled_tasks()
             return entries if success else {}
-        elif category == "services":
+        elif cat == "service":
             success, entries, _ = persistence.read_windows_services()
             return entries if success else {}
     except Exception as ex:
@@ -558,8 +573,9 @@ def get_current_persistence_entries(category: str) -> Dict[str, Dict[str, Any]]:
 @dashboard_bp.route("/api/baseline/current", methods=["GET"])
 def api_baseline_current():
     """Returns live enumeration of current persistence items for a category."""
-    category = request.args.get("category")
-    if not category or category not in config.PERSISTENCE_CATEGORIES:
+    raw_cat = request.args.get("category")
+    category = normalize_category(raw_cat)
+    if not category:
         abort(400, description=f"Invalid or missing category: must be one of {config.PERSISTENCE_CATEGORIES}")
 
     entries_map = get_current_persistence_entries(category)
@@ -579,20 +595,26 @@ def api_baseline_compare():
     Categorizes into ADDED, REMOVED, MODIFIED, and UNCHANGED.
     """
     db_path = get_active_db_path()
-    category = request.args.get("category")
-    if not category or category not in config.PERSISTENCE_CATEGORIES:
+    raw_cat = request.args.get("category")
+    category = normalize_category(raw_cat)
+    if not category:
         abort(400, description=f"Invalid or missing category: must be one of {config.PERSISTENCE_CATEGORIES}")
 
-    # 1. Fetch Candidate baseline entries from DB
+    # 1. Fetch Candidate baseline entries from DB (or fallback to accepted if already established)
     candidates_dict = db.get_candidate_baseline(category=category, db_path=db_path)
+    baseline_type = "candidate"
+    if not candidates_dict:
+        candidates_dict = db.get_persistence_baseline(category=category, only_accepted=True, db_path=db_path)
+        baseline_type = "accepted"
+
     cand_map = {dict(v).get("entry_key"): dict(v) for v in candidates_dict.values() if dict(v).get("entry_key")}
 
     # 2. Enumerate Current System State (Live)
     curr_map = get_current_persistence_entries(category)
 
     # 3. Categorize into Added, Removed, Modified, Unchanged
-    added = []      # in candidate, not in current
-    removed = []    # in current, not in candidate
+    added = []      # in proposed baseline, not in current
+    removed = []    # in current, not in proposed baseline
     modified = []   # in both, different value
     unchanged = []  # in both, same value
 
@@ -607,7 +629,7 @@ def api_baseline_compare():
             "entry_value": c.get("entry_value", ""),
             "fingerprint": c.get("fingerprint", ""),
             "status": "added",
-            "source": "candidate",
+            "source": baseline_type,
         })
 
     for k in sorted(curr_keys - cand_keys):
@@ -650,6 +672,7 @@ def api_baseline_compare():
     return jsonify({
         "success": True,
         "category": category,
+        "baseline_type": baseline_type,
         "counts": {
             "candidate": len(cand_map),
             "current": len(curr_map),

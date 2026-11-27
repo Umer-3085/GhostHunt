@@ -401,18 +401,16 @@ class ScanScheduler:
         Guarded by the shared operation lock with non-blocking check.
         Returns immediate status: 'started' or 'busy'.
         """
-        acquired = self.operation_lock.acquire(blocking=False)
-        if not acquired:
-            return {
-                "success": False,
-                "status": "busy",
-                "message": "Another operation (scan, reset, or acceptance) is currently in progress",
-                "scan_id": None,
-            }
-
-        _update_scan_progress(None, "process_views", 5)
+        started_event = threading.Event()
+        acquired_container = [False]
 
         def _worker():
+            if not self.operation_lock.acquire(blocking=False):
+                started_event.set()
+                return
+            acquired_container[0] = True
+            started_event.set()
+            _update_scan_progress(None, "process_views", 5)
             try:
                 self.coordinator(db_path=self.db_path)
             except Exception as ex:
@@ -427,6 +425,16 @@ class ScanScheduler:
             daemon=True,
         )
         t.start()
+        started_event.wait(timeout=0.5)
+
+        if not acquired_container[0]:
+            return {
+                "success": False,
+                "status": "busy",
+                "message": "Another operation (scan, reset, or acceptance) is currently in progress",
+                "scan_id": None,
+            }
+
         return {
             "success": True,
             "status": "started",

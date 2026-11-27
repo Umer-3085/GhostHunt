@@ -285,7 +285,7 @@ function showTableSkeleton(tableId, rowCount = 5, colCount = 7) {
     const table = document.getElementById(tableId);
     if (!table) return;
     const tbody = table.querySelector('tbody');
-    if (!tbody) return;
+    if (!tbody || tbody.children.length > 0) return;
     tbody.innerHTML = '';
     for (let i = 0; i < rowCount; i++) {
         const tr = document.createElement('tr');
@@ -807,15 +807,33 @@ async function applyLiveDeltaUpdates(prevScanId, newScanId) {
         });
 
         // 2. Insert new rows with green highlight
-        (delta.new_entities || []).forEach(ent => {
+        (delta.new_entities || []).forEach((ent, idx) => {
             const tr = document.createElement('tr');
+            const rowId = `entity-row-dyn-${Date.now()}-${idx}`;
+            const panelId = `waterfall-panel-dyn-${Date.now()}-${idx}`;
+            tr.id = rowId;
             tr.className = `process-row entity-row severity-${ent.risk_level.toLowerCase()} row-updated`;
             tr.setAttribute('data-severity', ent.risk_level);
             tr.setAttribute('data-pid', ent.pid ?? '');
             tr.setAttribute('data-score', ent.score);
+            tr.setAttribute('data-signals', ent.signals_triggered || '');
+            tr.setAttribute('data-process-name', ent.process_name || '');
+            tr.setAttribute('tabindex', '0');
+            tr.setAttribute('role', 'button');
+            tr.setAttribute('aria-expanded', 'false');
+            tr.setAttribute('aria-controls', panelId);
             tr.setAttribute('data-search', `${ent.process_name} ${ent.pid ?? ''} ${ent.signals_triggered || ''}`.toLowerCase());
             tr.innerHTML = `
-                <td><span class="badge badge-severity badge-${ent.risk_level.toLowerCase()}">${ent.risk_level}</span></td>
+                <td class="cell-severity">
+                    <div class="severity-wrapper">
+                        <button type="button" class="waterfall-chevron-btn" aria-label="Toggle signal breakdown for ${escapeHtml(ent.process_name)}" tabindex="-1">
+                            <svg class="waterfall-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
+                        </button>
+                        <span class="badge badge-severity badge-${ent.risk_level.toLowerCase()}">${escapeHtml(ent.risk_level)}</span>
+                    </div>
+                </td>
                 <td>
                     <div class="score-container">
                         <span class="score-num font-mono">${ent.score.toFixed(2)}</span>
@@ -828,6 +846,19 @@ async function applyLiveDeltaUpdates(prevScanId, newScanId) {
                 <td><span class="badge badge-entity-type">${escapeHtml((ent.item_key || '').split(':')[0].toUpperCase() || 'PROC')}</span></td>
                 <td style="text-align: right;"><a href="/process/${ent.pid}?scan_id=${newScanId}" class="btn btn-sm btn-secondary">Evidence →</a></td>
             `;
+
+            const wtr = document.createElement('tr');
+            wtr.className = 'waterfall-row hidden';
+            wtr.id = panelId.replace('panel', 'row');
+            wtr.setAttribute('aria-hidden', 'true');
+            wtr.innerHTML = `
+                <td colspan="7" class="waterfall-cell">
+                    <div class="waterfall-panel" id="${panelId}" role="region" aria-label="Signal breakdown for ${escapeHtml(ent.process_name)}">
+                        ${SignalWaterfall.renderPanel(ent)}
+                    </div>
+                </td>
+            `;
+            tbody.prepend(wtr);
             tbody.prepend(tr);
         });
 
@@ -1554,11 +1585,40 @@ class SignalWaterfall {
     static expand(row) {
         this.closeAll();
 
-        const waterfallRow = row.nextElementSibling && row.nextElementSibling.classList.contains('waterfall-row')
+        let waterfallRow = row.nextElementSibling && row.nextElementSibling.classList.contains('waterfall-row')
             ? row.nextElementSibling
             : document.getElementById(row.getAttribute('aria-controls')?.replace('waterfall-panel-', 'waterfall-row-'));
 
-        if (!waterfallRow) return;
+        if (!waterfallRow) {
+            // Create waterfall sub-row dynamically on demand
+            const index = row.getAttribute('data-index') || Math.random().toString(36).substring(2, 9);
+            const panelId = `waterfall-panel-${index}`;
+            waterfallRow = document.createElement('tr');
+            waterfallRow.className = 'waterfall-row hidden';
+            waterfallRow.id = `waterfall-row-${index}`;
+            waterfallRow.setAttribute('aria-hidden', 'true');
+
+            const procName = row.getAttribute('data-process-name') || row.querySelector('.font-bold')?.textContent.trim() || 'Process';
+            const td = document.createElement('td');
+            td.colSpan = 7;
+            td.className = 'waterfall-cell';
+
+            const entityData = {
+                process_name: procName,
+                score: parseFloat(row.getAttribute('data-score')) || 0.0,
+                risk_level: row.getAttribute('data-severity') || 'LOW',
+                signals_triggered: row.getAttribute('data-signals') || ''
+            };
+
+            td.innerHTML = `
+                <div class="waterfall-panel" id="${panelId}" role="region" aria-label="Signal breakdown for ${escapeHtml(procName)}">
+                    ${this.renderPanel(entityData)}
+                </div>
+            `;
+            waterfallRow.appendChild(td);
+            row.setAttribute('aria-controls', panelId);
+            row.parentNode.insertBefore(waterfallRow, row.nextSibling);
+        }
 
         row.classList.add('is-expanded');
         row.setAttribute('aria-expanded', 'true');

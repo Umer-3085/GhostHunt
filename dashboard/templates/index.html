@@ -94,20 +94,19 @@
         </div>
     </section>
 
-    <!-- 2b. Scheduler Mini-Timeline Card -->
-    <section class="card scheduler-timeline-card" id="scheduler-timeline-card">
+    <!-- 2b. Scheduler Timeline Card (Last 10 Scans Horizontal Timeline) -->
+    <section class="card timeline-card scheduler-timeline-card" id="timeline-card">
         <div class="card-header">
             <div class="card-header-title">
                 <h2 class="card-title">Scheduler Activity Timeline</h2>
                 <span class="badge badge-secondary" id="sched-timeline-interval">Every {% if scheduler_running %}{{ config_interval_seconds|default('—') }}s{% else %}—{% endif %}</span>
             </div>
             <div class="sched-timeline-eta-wrap">
-                <span class="sched-timeline-next" id="sched-timeline-next">Loading…</span>
+                <span class="sched-timeline-next" id="sched-timeline-next">Next Scan: Calculating…</span>
             </div>
         </div>
-        <div class="sched-timeline-dots" id="sched-timeline-dots" aria-label="Last 5 scan results timeline">
-            <!-- Populated via JS from /api/scans/recent -->
-            <div class="sched-timeline-empty text-tertiary">Loading scan history…</div>
+        <div class="timeline-container" id="timeline-container" aria-label="Last 10 completed scans horizontal timeline">
+            <div class="timeline-empty text-tertiary">Loading scan timeline…</div>
         </div>
     </section>
 
@@ -337,96 +336,11 @@
 
 {% block scripts %}
 <script>
-// Scheduler mini-timeline
-async function loadSchedulerTimeline() {
-    try {
-        const res = await fetch('/api/scans/recent');
-        if (!res.ok) return;
-        const data = await res.json();
-        const scans = (data.scans || []).slice(0, 5).reverse(); // oldest first → newest right
-        const container = document.getElementById('sched-timeline-dots');
-        const nextEl = document.getElementById('sched-timeline-next');
-        if (!container) return;
-
-        if (scans.length === 0) {
-            container.innerHTML = '<div class="sched-timeline-empty text-tertiary">No completed scans yet</div>';
-            return;
-        }
-
-        const html = scans.map((s, i) => {
-            const isLast = i === scans.length - 1;
-            const statusClass = s.high_risk_count > 0 ? 'dot-high' : (s.status === 'COMPLETED' ? 'dot-ok' : 'dot-fail');
-            const dur = Number(s.scan_duration_ms || s.duration_ms || 0);
-            const findings = s.total_findings || 0;
-            const high = s.high_risk_count || 0;
-            const scanTime = s.scan_time || s.started_at || '';
-            const statusBadge = high > 0
-                ? `<span class="badge badge-severity badge-high">${high} HIGH</span>`
-                : (s.status === 'COMPLETED'
-                    ? `<span class="badge badge-severity badge-low">CLEAN</span>`
-                    : `<span class="badge badge-severity badge-failed">${s.status}</span>`);
-
-            return `
-                <div class="sched-dot-wrap ${isLast ? 'sched-dot-latest' : ''}">
-                    <div class="sched-dot ${statusClass}" 
-                         tabindex="0" 
-                         role="button" 
-                         aria-label="Scan #${s.id}: ${high > 0 ? high + ' High' : s.status}">
-                    </div>
-                    <span class="sched-dot-label">#${s.id}</span>
-                    <div class="sched-tooltip" role="tooltip">
-                        <div class="sched-tooltip-header">
-                            <span class="sched-tooltip-id">Scan #${s.id}</span>
-                            ${statusBadge}
-                        </div>
-                        <div class="sched-tooltip-grid">
-                            <div class="sched-tooltip-row">
-                                <span class="sched-tooltip-k">Duration</span>
-                                <span class="sched-tooltip-v">${dur.toFixed(1)} ms</span>
-                            </div>
-                            <div class="sched-tooltip-row">
-                                <span class="sched-tooltip-k">Findings</span>
-                                <span class="sched-tooltip-v">${findings}</span>
-                            </div>
-                            <div class="sched-tooltip-row">
-                                <span class="sched-tooltip-k">High Risk</span>
-                                <span class="sched-tooltip-v ${high > 0 ? 'text-danger font-bold' : ''}">${high}</span>
-                            </div>
-                        </div>
-                        <div class="sched-tooltip-footer">${scanTime ? escapeHtmlInline(scanTime) : 'Completed'}</div>
-                    </div>
-                </div>
-                ${i < scans.length - 1 ? '<div class="sched-timeline-line"></div>' : ''}
-            `;
-        }).join('');
-        container.innerHTML = html;
-
-        // Update ETA in timeline card
-        const statusRes = await fetch('/api/status');
-        if (!statusRes.ok) return;
-        const statusData = await statusRes.json();
-        if (nextEl && statusData.scheduler?.is_running) {
-            const interval = statusData.scheduler.interval_seconds || 300;
-            let lastMs = null;
-            if (statusData.latest_scan?.scan_time) {
-                lastMs = new Date(statusData.latest_scan.scan_time.replace(' ', 'T')).getTime();
-            } else if (statusData.scheduler.last_scan_time) {
-                lastMs = statusData.scheduler.last_scan_time * 1000;
-            }
-            if (lastMs) {
-                const remaining = Math.max(0, Math.round(interval - (Date.now() - lastMs) / 1000));
-                nextEl.textContent = remaining > 0 ? `Next in ${remaining}s` : 'Overdue';
-                nextEl.className = remaining === 0 ? 'sched-timeline-next text-warning' : 'sched-timeline-next';
-                // keep updating
-                setTimeout(() => {
-                    const r2 = Math.max(0, remaining - 1);
-                    if (nextEl) nextEl.textContent = r2 > 0 ? `Next in ${r2}s` : 'Overdue';
-                }, 1000);
-            }
-        } else if (nextEl) {
-            nextEl.textContent = 'Scheduler inactive';
-        }
-    } catch (e) { /* silent */ }
+// Scheduler timeline initialized via TimelineCard component in dashboard.js
+function loadSchedulerTimeline() {
+    if (window.TimelineCard) {
+        TimelineCard.load();
+    }
 }
 
 // Baseline diff viewer

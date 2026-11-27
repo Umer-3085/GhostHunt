@@ -2167,10 +2167,205 @@ pre {
   .scan-progress-label { display: none; }
 }
 
-/* === SCHEDULER MINI-TIMELINE CARD === */
+/* === SCHEDULER MINI-TIMELINE CARD & HORIZONTAL TIMELINE (Last 10 Scans) === */
+.timeline-card,
 .scheduler-timeline-card {
   margin-bottom: var(--space-lg);
   overflow: visible;
+}
+.timeline-container {
+  padding: var(--space-md) var(--space-lg);
+  overflow-x: auto;
+  overflow-y: visible;
+  position: relative;
+}
+.timeline-track {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-sm);
+  min-width: min-content;
+  padding: var(--space-xs) 0 var(--space-sm);
+  position: relative;
+}
+.timeline-item {
+  flex: 1 1 0;
+  min-width: 120px;
+  max-width: 160px;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-md);
+  padding: var(--space-xs) var(--space-sm);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  position: relative;
+  cursor: pointer;
+  transition: transform var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.timeline-item:hover,
+.timeline-item:focus {
+  transform: translateY(-2px);
+  border-color: var(--color-hairline-strong);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  outline: none;
+}
+.timeline-item-latest {
+  border-color: rgba(94, 106, 210, 0.4);
+  background: linear-gradient(180deg, rgba(94, 106, 210, 0.08) 0%, var(--color-surface-2) 100%);
+}
+.timeline-item-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xxs);
+  margin-bottom: var(--space-xxs);
+}
+.timeline-scan-id {
+  font-family: var(--font-mono);
+  font-size: var(--text-body-sm);
+  font-weight: 600;
+  color: var(--color-ink);
+}
+.badge-latest {
+  font-size: 9px;
+  padding: 1px 4px;
+  background: rgba(94, 106, 210, 0.15);
+  color: var(--color-brand);
+  border-radius: var(--radius-xs);
+  margin-left: auto;
+}
+/* Visual Risk Indicators */
+.risk-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+.risk-dot-high {
+  background: var(--color-risk-high);
+  box-shadow: 0 0 6px rgba(224, 86, 103, 0.4);
+}
+.risk-dot-med,
+.risk-dot-medium {
+  background: var(--color-risk-medium);
+  box-shadow: 0 0 6px rgba(217, 164, 65, 0.4);
+}
+.risk-dot-low {
+  background: var(--color-risk-low);
+  box-shadow: 0 0 6px rgba(67, 181, 129, 0.3);
+}
+.timeline-item-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.timeline-time {
+  font-size: 11px;
+  color: var(--color-ink-muted);
+}
+.timeline-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--color-ink-tertiary);
+}
+.timeline-duration {
+  color: var(--color-ink-muted);
+}
+.timeline-bullet {
+  opacity: 0.5;
+}
+.timeline-entities {
+  white-space: nowrap;
+}
+/* Next Scheduled Scan Item */
+.timeline-item-next {
+  background: var(--color-surface-1);
+  border: 1px dashed var(--color-hairline-strong);
+  cursor: default;
+}
+.timeline-item-next:hover,
+.timeline-item-next:focus {
+  transform: none;
+  border-color: var(--color-hairline-strong);
+  box-shadow: none;
+}
+.timeline-next-icon {
+  font-size: 11px;
+}
+.timeline-countdown {
+  font-size: 12px;
+  color: var(--color-brand);
+}
+.timeline-schedule-status {
+  font-size: 10px;
+  color: var(--color-ink-tertiary);
+}
+/* Overdue state highlighted */
+.timeline-item-next.is-overdue {
+  border-color: var(--color-risk-medium);
+  background: rgba(217, 164, 65, 0.08);
+}
+.timeline-item-next.is-overdue .timeline-countdown {
+  color: var(--color-risk-medium);
+  animation: pulse-overdue 2s infinite ease-in-out;
+}
+@keyframes pulse-overdue {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+.timeline-connector {
+  width: 1px;
+  background: var(--color-hairline);
+  margin: var(--space-xs) 0;
+  align-self: stretch;
+}
+.timeline-empty {
+  padding: var(--space-md);
+  text-align: center;
+  font-size: var(--text-body-sm);
+}
+/* Tooltip on timeline item */
+.timeline-item .timeline-tooltip {
+  min-width: 210px;
+}
+.timeline-item:hover .timeline-tooltip,
+.timeline-item:focus-within .timeline-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0);
+  pointer-events: auto;
+}
+.timeline-item:first-child .timeline-tooltip {
+  left: 0;
+  transform: translateX(0) translateY(6px);
+}
+.timeline-item:first-child .timeline-tooltip::after {
+  left: 20px;
+  transform: none;
+}
+.timeline-item:first-child:hover .timeline-tooltip,
+.timeline-item:first-child:focus-within .timeline-tooltip {
+  transform: translateX(0) translateY(0);
+}
+.timeline-item:nth-last-child(2) .timeline-tooltip,
+.timeline-item:last-child .timeline-tooltip {
+  left: auto;
+  right: 0;
+  transform: translateX(0) translateY(6px);
+}
+.timeline-item:nth-last-child(2) .timeline-tooltip::after,
+.timeline-item:last-child .timeline-tooltip::after {
+  left: auto;
+  right: 20px;
+  transform: none;
+}
+.timeline-item:nth-last-child(2):hover .timeline-tooltip,
+.timeline-item:nth-last-child(2):focus-within .timeline-tooltip,
+.timeline-item:last-child:hover .timeline-tooltip,
+.timeline-item:last-child:focus-within .timeline-tooltip {
+  transform: translateX(0) translateY(0);
 }
 .sched-timeline-eta-wrap {
   display: flex;
@@ -2815,6 +3010,40 @@ pre {
 
 /* === MOBILE RESPONSIVE POLISH (Item 11) === */
 @media (max-width: 768px) {
+  /* Timeline card responsive vertical stack */
+  .timeline-container {
+    overflow-x: visible;
+    padding: var(--space-sm) var(--space-md);
+  }
+  .timeline-track {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-xs);
+    min-width: 0;
+  }
+  .timeline-item {
+    max-width: 100%;
+    min-width: 0;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-sm) var(--space-md);
+  }
+  .timeline-item-header {
+    margin-bottom: 0;
+    gap: var(--space-xs);
+  }
+  .timeline-item-body {
+    align-items: flex-end;
+    text-align: right;
+  }
+  .timeline-connector {
+    display: none;
+  }
+  .timeline-item .timeline-tooltip {
+    display: none;
+  }
+
   #entities-table th:nth-child(1),
   #entities-table td:nth-child(1) {
     position: sticky;

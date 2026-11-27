@@ -412,6 +412,9 @@ async function pollStatus() {
 
         // Update scheduler ETA countdown
         updateSchedulerEta(data);
+        if (window.TimelineCard) {
+            TimelineCard.updateEta(data);
+        }
 
         // Check for active scan progress (from scheduler or manual)
         if (data.scan_progress) {
@@ -439,6 +442,7 @@ async function pollStatus() {
                     showToast(`New scan #${data.latest_completed_scan_id} completed.`, 'success', 4000);
                     // Apply live delta updates without full page reload
                     applyLiveDeltaUpdates(prevId, data.latest_completed_scan_id);
+                    if (window.TimelineCard) TimelineCard.load();
                 }
                 // Scan completed — stop any stale progress polling and reset button
                 stopScanProgressPolling();
@@ -460,6 +464,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.location.pathname === '/') {
         showTableSkeleton('entities-table', 5, 7);
         showCardSkeleton('.metrics-grid', 4);
+        if (window.TimelineCard) {
+            TimelineCard.init();
+        }
     }
 
     pollStatus();
@@ -1088,3 +1095,296 @@ showToast = function(message, type = 'info', durationMs = 4000, action = null) {
     originalShowToast(message, type, durationMs, action);
     updateNotificationBadge();
 };
+
+// ===========================================================================
+// TimelineCard Component (Scheduler Activity & Last 10 Scans Timeline)
+// ===========================================================================
+const TimelineCard = {
+    containerId: 'timeline-container',
+    dotsContainerId: 'sched-timeline-dots', // fallback / backward-compat
+    etaElementId: 'sched-timeline-next',
+    intervalElementId: 'sched-timeline-interval',
+    refreshIntervalMs: 15000,
+    timerId: null,
+    countdownTimerId: null,
+    nextScanMs: null,
+    isOverdue: false,
+
+    init() {
+        const container = document.getElementById(this.containerId) || document.getElementById(this.dotsContainerId);
+        if (!container) return;
+
+        this.load();
+        this.startAutoRefresh();
+        this.startCountdownTicker();
+    },
+
+    async load() {
+        try {
+            const [recentRes, statusRes] = await Promise.all([
+                fetch('/api/scans/recent'),
+                fetch('/api/status')
+            ]);
+
+            if (!recentRes.ok) return;
+            const recentData = await recentRes.json();
+            // Up to 10 completed scans, reversed so oldest is left, newest is right
+            const scans = (recentData.scans || []).slice(0, 10).reverse();
+
+            let statusData = null;
+            if (statusRes && statusRes.ok) {
+                statusData = await statusRes.json();
+            }
+
+            this.render(scans, statusData);
+            if (statusData) {
+                this.updateEta(statusData);
+            }
+        } catch (e) {
+            console.debug('TimelineCard load error:', e);
+        }
+    },
+
+    render(scans, statusData) {
+        const container = document.getElementById(this.containerId) || document.getElementById(this.dotsContainerId);
+        if (!container) return;
+
+        if (!scans || scans.length === 0) {
+            container.innerHTML = `
+                <div class="timeline-empty text-tertiary">
+                    No completed scans recorded yet. Initiate a scan to populate the timeline.
+                </div>
+            `;
+            return;
+        }
+
+        const itemsHtml = scans.map((s, index) => {
+            const isLatest = index === scans.length - 1;
+            const durMs = Number(s.scan_duration_ms || s.duration_ms || 0);
+            const durText = durMs >= 1000 ? `${(durMs / 1000).toFixed(1)}s` : `${Math.round(durMs)}ms`;
+
+            // Risk level determination
+            const highCount = s.high_risk_count || s.high_count || 0;
+            const medCount = s.med_count || 0;
+            let riskLevel = 'low';
+            let riskDotClass = 'risk-dot-low';
+            let riskBadge = '<span class="badge badge-severity badge-low">LOW</span>';
+
+            if (highCount > 0) {
+                riskLevel = 'high';
+                riskDotClass = 'risk-dot-high';
+                riskBadge = `<span class="badge badge-severity badge-high">${highCount} HIGH</span>`;
+            } else if (medCount > 0) {
+                riskLevel = 'med';
+                riskDotClass = 'risk-dot-med';
+                riskBadge = `<span class="badge badge-severity badge-medium">MEDIUM</span>`;
+            }
+
+            const entityCount = s.entity_count !== undefined ? s.entity_count : (s.total_findings || 0);
+            const entityLabel = entityCount === 1 ? '1 entity' : `${entityCount} entities`;
+
+            // Format timestamp
+            const rawTime = s.scan_time || s.completed_at || s.started_at || '';
+            let formattedTime = 'Recent';
+            let fullTimeStr = rawTime;
+            if (rawTime) {
+                try {
+                    const d = new Date(rawTime.replace(' ', 'T'));
+                    if (!isNaN(d.getTime())) {
+                        formattedTime = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                        fullTimeStr = d.toLocaleString();
+                    }
+                } catch (e) {
+                    formattedTime = rawTime.slice(11, 19) || rawTime;
+                }
+            }
+
+            return `
+                <div class="timeline-item ${isLatest ? 'timeline-item-latest' : ''}" 
+                     data-scan-id="${s.id}" 
+                     data-risk="${riskLevel}"
+                     tabindex="0"
+                     role="group"
+                     aria-label="Scan #${s.id}: ${riskLevel.toUpperCase()}, ${entityLabel}, ${durText}">
+                    <div class="timeline-item-header">
+                        <span class="risk-dot ${riskDotClass}" title="${riskLevel.toUpperCase()} Risk" aria-hidden="true"></span>
+                        <span class="timeline-scan-id font-mono">#${s.id}</span>
+                        ${isLatest ? '<span class="badge badge-subtle badge-latest">LATEST</span>' : ''}
+                    </div>
+                    <div class="timeline-item-body">
+                        <div class="timeline-time font-mono" title="${escapeHtml(fullTimeStr)}">${escapeHtml(formattedTime)}</div>
+                        <div class="timeline-meta-row">
+                            <span class="timeline-duration font-mono">${durText}</span>
+                            <span class="timeline-bullet">•</span>
+                            <span class="timeline-entities">${entityLabel}</span>
+                        </div>
+                    </div>
+
+                    <!-- Interactive Linear Tooltip -->
+                    <div class="sched-tooltip timeline-tooltip" role="tooltip">
+                        <div class="sched-tooltip-header">
+                            <span class="sched-tooltip-id font-mono">Scan #${s.id}</span>
+                            ${riskBadge}
+                        </div>
+                        <div class="sched-tooltip-grid">
+                            <div class="sched-tooltip-row">
+                                <span class="sched-tooltip-k">Timestamp</span>
+                                <span class="sched-tooltip-v font-mono">${escapeHtml(fullTimeStr)}</span>
+                            </div>
+                            <div class="sched-tooltip-row">
+                                <span class="sched-tooltip-k">Duration</span>
+                                <span class="sched-tooltip-v font-mono">${durMs.toFixed(1)} ms</span>
+                            </div>
+                            <div class="sched-tooltip-row">
+                                <span class="sched-tooltip-k">Correlated Entities</span>
+                                <span class="sched-tooltip-v font-bold">${entityCount}</span>
+                            </div>
+                            <div class="sched-tooltip-row">
+                                <span class="sched-tooltip-k">High Risk Count</span>
+                                <span class="sched-tooltip-v ${highCount > 0 ? 'text-danger font-bold' : ''}">${highCount}</span>
+                            </div>
+                        </div>
+                        <div class="sched-tooltip-footer">Click to view snapshot →</div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        // Next Scheduled Scan Marker (Reuse scheduler ETA logic)
+        const nextMarkerHtml = `
+            <div class="timeline-item timeline-item-next" id="timeline-item-next" role="status" aria-live="polite">
+                <div class="timeline-item-header">
+                    <span class="timeline-next-icon" aria-hidden="true">⏳</span>
+                    <span class="timeline-scan-id">Next Scan</span>
+                </div>
+                <div class="timeline-item-body">
+                    <div class="timeline-countdown font-mono font-bold" id="timeline-countdown-val">Calculating…</div>
+                    <div class="timeline-meta-row">
+                        <span class="timeline-schedule-status" id="timeline-schedule-status">Auto-scheduled</span>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        container.innerHTML = `
+            <div class="timeline-track" role="list">
+                ${itemsHtml}
+                <div class="timeline-connector" aria-hidden="true"></div>
+                ${nextMarkerHtml}
+            </div>
+        `;
+
+        // Interactive click on scan items navigates to scan snapshot in history
+        container.querySelectorAll('.timeline-item:not(.timeline-item-next)').forEach(item => {
+            item.addEventListener('click', () => {
+                const scanId = item.getAttribute('data-scan-id');
+                if (scanId) {
+                    window.location.href = `/history/${scanId}`;
+                }
+            });
+            item.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    const scanId = item.getAttribute('data-scan-id');
+                    if (scanId) {
+                        window.location.href = `/history/${scanId}`;
+                    }
+                }
+            });
+        });
+    },
+
+    updateEta(statusData) {
+        const nextEl = document.getElementById(this.etaElementId);
+        const countdownVal = document.getElementById('timeline-countdown-val');
+        const nextMarker = document.getElementById('timeline-item-next');
+        const schedStatus = document.getElementById('timeline-schedule-status');
+        const intervalEl = document.getElementById(this.intervalElementId);
+
+        if (!statusData || !statusData.scheduler) return;
+
+        const isRunning = statusData.scheduler.is_running;
+        const interval = statusData.scheduler.interval_seconds || 300;
+
+        if (intervalEl) {
+            intervalEl.textContent = isRunning ? `Every ${interval}s` : 'Disabled';
+        }
+
+        if (!isRunning) {
+            this.nextScanMs = null;
+            if (nextEl) nextEl.textContent = 'Scheduler: Standby';
+            if (countdownVal) countdownVal.textContent = 'Standby';
+            if (schedStatus) schedStatus.textContent = 'Scheduler stopped';
+            if (nextMarker) nextMarker.classList.remove('is-overdue');
+            return;
+        }
+
+        let lastScanMs = null;
+        if (statusData.latest_scan && statusData.latest_scan.scan_time) {
+            lastScanMs = new Date(statusData.latest_scan.scan_time.replace(' ', 'T')).getTime();
+        } else if (statusData.scheduler.last_scan_time) {
+            lastScanMs = statusData.scheduler.last_scan_time * 1000;
+        }
+
+        if (!lastScanMs) {
+            this.nextScanMs = Date.now() + interval * 1000;
+        } else {
+            this.nextScanMs = lastScanMs + interval * 1000;
+        }
+
+        this.tickCountdown();
+    },
+
+    tickCountdown() {
+        const nextEl = document.getElementById(this.etaElementId);
+        const countdownVal = document.getElementById('timeline-countdown-val');
+        const nextMarker = document.getElementById('timeline-item-next');
+
+        if (!this.nextScanMs) return;
+
+        const remaining = Math.round((this.nextScanMs - Date.now()) / 1000);
+        if (remaining <= 0) {
+            this.isOverdue = true;
+            if (nextEl) {
+                nextEl.textContent = 'Scan Overdue';
+                nextEl.className = 'sched-timeline-next text-warning';
+            }
+            if (countdownVal) {
+                countdownVal.textContent = 'Overdue';
+            }
+            if (nextMarker) {
+                nextMarker.classList.add('is-overdue');
+            }
+        } else {
+            this.isOverdue = false;
+            const durStr = formatDuration(remaining);
+            if (nextEl) {
+                nextEl.textContent = `Next in: ${durStr}`;
+                nextEl.className = 'sched-timeline-next';
+            }
+            if (countdownVal) {
+                countdownVal.textContent = `in ${durStr}`;
+            }
+            if (nextMarker) {
+                nextMarker.classList.remove('is-overdue');
+            }
+        }
+    },
+
+    startCountdownTicker() {
+        if (this.countdownTimerId) return;
+        this.countdownTimerId = setInterval(() => {
+            this.tickCountdown();
+        }, 1000);
+    },
+
+    startAutoRefresh() {
+        if (this.timerId) return;
+        this.timerId = setInterval(() => {
+            this.load();
+        }, this.refreshIntervalMs);
+    }
+};
+
+window.TimelineCard = TimelineCard;
+window.loadSchedulerTimeline = () => TimelineCard.load();

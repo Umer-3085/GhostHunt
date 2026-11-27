@@ -76,6 +76,9 @@ class TestDashboardViews(unittest.TestCase):
         self.assertIn("HIGH", html)
         self.assertIn("LOW", html)
         self.assertIn("badge-high", html)
+        self.assertIn("timeline-card", html)
+        self.assertIn("timeline-container", html)
+        self.assertIn("Scheduler Activity Timeline", html)
 
     def test_03_candidate_baseline_review_banner(self):
         """When a persistence category is in CANDIDATE_REVIEW, a review banner is displayed."""

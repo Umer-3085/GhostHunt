@@ -484,9 +484,7 @@ def api_recent_scans():
     Returns the last 10 completed scans with summary data for the timeline card.
     """
     db_path = get_active_db_path()
-    history = db.get_scan_history(limit=10, db_path=db_path)
-    # Filter to only completed scans
-    completed = [h for h in history if h.get("status") == "COMPLETED"]
+    completed = db.get_recent_completed_scans(limit=10, db_path=db_path)
     return jsonify({
         "success": True,
         "count": len(completed),

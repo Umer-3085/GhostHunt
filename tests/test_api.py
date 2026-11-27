@@ -296,6 +296,32 @@ class TestRestApi(unittest.TestCase):
             resp_reset = self.client.post("/api/baseline/reset", json={"confirm": True})
             self.assertEqual(resp_reset.status_code, 409)
 
+    def test_17_recent_scans_returns_completed_only(self):
+        """GET /api/scans/recent returns up to 10 completed scans with entity counts."""
+        # Insert completed scans and failed scans
+        sid1 = db.start_scan(db_path=self.db_path)
+        db.complete_scan(sid1, total_findings=2, high_risk_count=1, duration_ms=45.0, db_path=self.db_path)
+
+        sid_fail = db.start_scan(db_path=self.db_path)
+        db.fail_scan(sid_fail, "Simulated failure", db_path=self.db_path)
+
+        sid2 = db.start_scan(db_path=self.db_path)
+        db.complete_scan(sid2, total_findings=0, high_risk_count=0, duration_ms=30.0, db_path=self.db_path)
+
+        resp = self.client.get("/api/scans/recent")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["success"])
+        self.assertEqual(data["count"], 2)
+        scans = data["scans"]
+        self.assertEqual(len(scans), 2)
+        self.assertEqual(scans[0]["id"], sid2)
+        self.assertEqual(scans[1]["id"], sid1)
+        for s in scans:
+            self.assertEqual(s["status"], "COMPLETED")
+            self.assertIn("entity_count", s)
+            self.assertIn("scan_duration_ms", s)
+
 
 if __name__ == "__main__":
     unittest.main()

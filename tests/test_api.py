@@ -356,6 +356,84 @@ class TestRestApi(unittest.TestCase):
         resp_invalid = self.client.get("/api/baseline/compare?category=invalid_cat")
         self.assertEqual(resp_invalid.status_code, 400)
 
+    def test_20_live_entity_delta_endpoint(self):
+        """GET /api/entities/delta accurately calculates new, changed, and removed entities by PID (Issue #8)."""
+        # 1. Create Scan 1
+        sid1 = db.start_scan(db_path=self.db_path)
+        scan1_entries = [
+            {"item_key": "proc:100:proc_a.exe", "process_name": "proc_a.exe", "pid": 100, "score": 0.30, "risk_level": "LOW", "signals_triggered": "persistence"},
+            {"item_key": "proc:200:proc_b.exe", "process_name": "proc_b.exe", "pid": 200, "score": 0.40, "risk_level": "MEDIUM", "signals_triggered": "process_view"},
+            {"item_key": "proc:300:proc_c.exe", "process_name": "proc_c.exe", "pid": 300, "score": 0.70, "risk_level": "HIGH", "signals_triggered": "process_view,persistence"},
+        ]
+        db.insert_risk_scores(sid1, scan1_entries, db_path=self.db_path)
+        db.complete_scan(sid1, 3, 1, 10.0, db_path=self.db_path)
+
+        # 2. Create Scan 2:
+        # - PID 100 removed
+        # - PID 200 changed (score 0.40 -> 0.70, MEDIUM -> HIGH)
+        # - PID 300 unchanged (score 0.70 -> 0.71, change <= 5%, HIGH -> HIGH)
+        # - PID 400 new
+        sid2 = db.start_scan(db_path=self.db_path)
+        scan2_entries = [
+            {"item_key": "proc:200:proc_b.exe", "process_name": "proc_b.exe", "pid": 200, "score": 0.70, "risk_level": "HIGH", "signals_triggered": "process_view,signature"},
+            {"item_key": "proc:300:proc_c.exe", "process_name": "proc_c.exe", "pid": 300, "score": 0.71, "risk_level": "HIGH", "signals_triggered": "process_view,persistence"},
+            {"item_key": "proc:400:proc_d.exe", "process_name": "proc_d.exe", "pid": 400, "score": 0.40, "risk_level": "MEDIUM", "signals_triggered": "process_view"},
+        ]
+        db.insert_risk_scores(sid2, scan2_entries, db_path=self.db_path)
+        db.complete_scan(sid2, 3, 1, 10.0, db_path=self.db_path)
+
+        # 3. Test explicit since and scan_id
+        resp = self.client.get(f"/api/entities/delta?since={sid1}&scan_id={sid2}")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["success"])
+        self.assertIn("new", data)
+        self.assertIn("changed", data)
+        self.assertIn("removed", data)
+
+        # Verify NEW entities (PID 400)
+        new_pids = [e["pid"] for e in data["new"]]
+        self.assertEqual(new_pids, [400])
+
+        # Verify CHANGED entities (PID 200)
+        changed_pids = [e["pid"] for e in data["changed"]]
+        self.assertEqual(changed_pids, [200])
+        self.assertEqual(data["changed"][0]["prev_risk_level"], "MEDIUM")
+        self.assertEqual(data["changed"][0]["risk_level"], "HIGH")
+
+        # Verify REMOVED entities (PID 100)
+        removed_pids = [e["pid"] for e in data["removed"]]
+        self.assertEqual(removed_pids, [100])
+
+        # Verify counts dictionary
+        self.assertEqual(data["counts"]["new"], 1)
+        self.assertEqual(data["counts"]["changed"], 1)
+        self.assertEqual(data["counts"]["removed"], 1)
+
+        # 4. Test default parameters (defaults to latest scan and previous completed scan)
+        resp_default = self.client.get("/api/entities/delta")
+        self.assertEqual(resp_default.status_code, 200)
+        data_default = resp_default.get_json()
+        self.assertEqual(data_default["scan_id"], sid2)
+        self.assertEqual(data_default["since"], sid1)
+        self.assertEqual(len(data_default["new"]), 1)
+        self.assertEqual(len(data_default["changed"]), 1)
+        self.assertEqual(len(data_default["removed"]), 1)
+
+        # 5. Test identical scan IDs returns empty deltas
+        resp_same = self.client.get(f"/api/entities/delta?since={sid2}&scan_id={sid2}")
+        self.assertEqual(resp_same.status_code, 200)
+        data_same = resp_same.get_json()
+        self.assertEqual(data_same["new"], [])
+        self.assertEqual(data_same["changed"], [])
+        self.assertEqual(data_same["removed"], [])
+
+        # 6. Test invalid since parameter returns 400
+        resp_invalid_since = self.client.get("/api/entities/delta?since=-5")
+        self.assertEqual(resp_invalid_since.status_code, 400)
+        resp_str_since = self.client.get("/api/entities/delta?since=invalid")
+        self.assertEqual(resp_str_since.status_code, 400)
+
 
 if __name__ == "__main__":
     unittest.main()

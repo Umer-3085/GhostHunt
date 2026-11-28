@@ -3728,6 +3728,93 @@ tr.waterfall-row.is-expanded .waterfall-panel {
   animation: rowHighlight 2s ease-out forwards;
 }
 
+/* === LIVE ENTITY DELTA HIGHLIGHTING (Issue #8) === */
+.entity-row.new {
+  border-left: 4px solid var(--color-risk-low, #27a644) !important;
+  background-color: rgba(39, 166, 68, 0.08);
+  transition: border-left 1s ease-out, background-color 1s ease-out;
+}
+
+.entity-row.changed {
+  border-left: 4px solid var(--color-risk-medium, #d9a441) !important;
+  background-color: rgba(217, 164, 65, 0.08);
+  transition: border-left 1s ease-out, background-color 1s ease-out;
+}
+
+.entity-row.removed {
+  border-left: 4px solid var(--color-risk-high, #d2495e) !important;
+  background-color: rgba(210, 73, 94, 0.08);
+  opacity: 0.85;
+  transition: opacity 1s ease-out, border-left 1s ease-out, background-color 1s ease-out;
+}
+
+.entity-row.removed td {
+  text-decoration: line-through;
+}
+
+.entity-row.removed .delta-badge,
+.entity-row.removed .badge-severity,
+.entity-row.removed .waterfall-chevron-btn,
+.entity-row.removed a {
+  text-decoration: none !important;
+}
+
+.entity-row.delta-fading {
+  border-left-color: transparent !important;
+  background-color: transparent !important;
+}
+
+.entity-row.removed.delta-fading {
+  opacity: 0 !important;
+}
+
+/* Delta Badges */
+.delta-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 6px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1;
+  border-radius: var(--radius-pill, 9999px);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin-left: 6px;
+  vertical-align: middle;
+  text-decoration: none !important;
+  transition: opacity 1s ease-out;
+}
+
+.delta-badge.new {
+  background: var(--color-risk-low-bg, #132a1a);
+  color: var(--color-risk-low, #27a644);
+  border: 1px solid var(--color-risk-low, #27a644);
+}
+
+.delta-badge.changed {
+  background: var(--color-risk-medium-bg, #2a2416);
+  color: var(--color-risk-medium, #d9a441);
+  border: 1px solid var(--color-risk-medium, #d9a441);
+}
+
+.delta-badge.removed {
+  background: var(--color-risk-high-bg, #2a1518);
+  color: var(--color-risk-high, #d2495e);
+  border: 1px solid var(--color-risk-high, #d2495e);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .entity-row.new,
+  .entity-row.changed,
+  .entity-row.removed,
+  .entity-row.delta-fading,
+  .delta-badge {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
 /* === SIMULATIONS ACTIONS (above table) === */
 .simulations-actions {
   display: flex;

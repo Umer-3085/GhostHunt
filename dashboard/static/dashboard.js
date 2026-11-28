@@ -450,8 +450,8 @@ async function pollStatus() {
                 lastKnownScanId = data.latest_completed_scan_id;
                 if (window.location.pathname === '/') {
                     showToast(`New scan #${data.latest_completed_scan_id} completed.`, 'success', 4000);
-                    // Apply live delta updates without full page reload
-                    applyLiveDeltaUpdates(prevId, data.latest_completed_scan_id);
+                    // Start entity delta polling (Issue #8)
+                    startEntityDeltaPolling(data.latest_completed_scan_id, prevId);
                     if (window.TimelineCard) TimelineCard.load();
                 }
                 // Scan completed — stop any stale progress polling and reset button
@@ -762,60 +762,177 @@ function updateNotificationBadge() {
     }
 }
 
-// Live delta entity updates (Item 4)
-async function applyLiveDeltaUpdates(prevScanId, newScanId) {
+// ===========================================================================
+// Live Entity Delta Updates (Issue #8)
+// ===========================================================================
+let entityDeltaPollInterval = null;
+let entityDeltaPollTimeout = null;
+let lastNotifiedDeltaScanId = null;
+
+function startEntityDeltaPolling(currentScanId, sinceScanId) {
+    stopEntityDeltaPolling();
+
+    // Fetch and apply initial delta immediately
+    pollEntityDeltas(currentScanId, sinceScanId);
+
+    // Poll every 10s for deltas
+    entityDeltaPollInterval = setInterval(() => {
+        pollEntityDeltas(currentScanId, sinceScanId);
+    }, 10000);
+
+    // Stop polling after 60s
+    entityDeltaPollTimeout = setTimeout(() => {
+        stopEntityDeltaPolling();
+    }, 60000);
+}
+
+function stopEntityDeltaPolling() {
+    if (entityDeltaPollInterval) {
+        clearInterval(entityDeltaPollInterval);
+        entityDeltaPollInterval = null;
+    }
+    if (entityDeltaPollTimeout) {
+        clearTimeout(entityDeltaPollTimeout);
+        entityDeltaPollTimeout = null;
+    }
+}
+
+// Stop polling when user navigates away or tab is hidden
+window.addEventListener('beforeunload', stopEntityDeltaPolling);
+window.addEventListener('pagehide', stopEntityDeltaPolling);
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+        stopEntityDeltaPolling();
+    }
+});
+
+async function pollEntityDeltas(currentScanId, sinceScanId) {
+    if (window.location.pathname !== '/') return;
     try {
-        const res = await fetch(`/api/scores?scan_id=${newScanId}&since_scan_id=${prevScanId}&per_page=500`);
+        let url = `/api/entities/delta?scan_id=${encodeURIComponent(currentScanId)}`;
+        if (sinceScanId !== null && sinceScanId !== undefined) {
+            url += `&since=${encodeURIComponent(sinceScanId)}`;
+        }
+        const res = await fetch(url);
         if (!res.ok) return;
-        const data = await res.json();
-        const delta = data.delta;
-        const tbody = document.getElementById('entities-tbody');
-        if (!tbody) return;
+        const deltaData = await res.json();
+        applyEntityDeltaUI(deltaData, currentScanId);
+    } catch (e) {
+        // Silent delta polling failure
+    }
+}
 
-        // Animate metric cards
-        if (data.entities) {
-            const highCount = data.entities.filter(e => e.risk_level === 'HIGH').length;
-            const medCount = data.entities.filter(e => e.risk_level === 'MEDIUM').length;
-            const lowCount = data.entities.filter(e => e.risk_level === 'LOW').length;
+function applyEntityDeltaUI(deltaData, currentScanId) {
+    const tbody = document.getElementById('entities-tbody');
+    if (!tbody) return;
 
-            animateMetricValue('metric-high-count', highCount);
-            animateMetricValue('metric-med-count', medCount);
-            animateMetricValue('metric-low-count', lowCount);
-            animateMetricValue('metric-scan-id', `#${newScanId}`);
+    const newEntities = deltaData.new || [];
+    const changedEntities = deltaData.changed || [];
+    const removedEntities = deltaData.removed || [];
+
+    const newCount = newEntities.length;
+    const changedCount = changedEntities.length;
+    const removedCount = removedEntities.length;
+
+    // Toast notification: "X new, Y changed, Z removed entities detected"
+    if ((newCount > 0 || changedCount > 0 || removedCount > 0) && lastNotifiedDeltaScanId !== currentScanId) {
+        lastNotifiedDeltaScanId = currentScanId;
+        showToast(`${newCount} new, ${changedCount} changed, ${removedCount} removed entities detected`, 'info', 5000);
+    }
+
+    const prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    function setupDeltaHighlight(row, type, badgeText) {
+        row.classList.remove('new', 'changed', 'removed', 'delta-fading');
+        const existingBadge = row.querySelector('.delta-badge');
+        if (existingBadge) existingBadge.remove();
+
+        row.classList.add(type);
+
+        const badge = document.createElement('span');
+        badge.className = `delta-badge ${type}`;
+        badge.textContent = badgeText;
+
+        const sevWrapper = row.querySelector('.severity-wrapper');
+        if (sevWrapper) {
+            sevWrapper.appendChild(badge);
+        } else {
+            const firstCell = row.cells[0];
+            if (firstCell) firstCell.appendChild(badge);
         }
 
-        if (!delta) return;
-
-        // 1. Highlight updated rows
-        (delta.updated_entities || []).forEach(ent => {
-            const pidStr = ent.pid !== null && ent.pid !== undefined ? String(ent.pid) : '';
-            const row = tbody.querySelector(`tr[data-pid="${pidStr}"]`) || 
-                        Array.from(tbody.querySelectorAll('tr')).find(r => r.textContent.includes(ent.process_name));
-            if (row) {
-                row.setAttribute('data-severity', ent.risk_level);
-                row.className = `process-row entity-row severity-${ent.risk_level.toLowerCase()} row-updated`;
-                const badge = row.querySelector('.badge-severity');
-                if (badge) {
-                    badge.className = `badge badge-severity badge-${ent.risk_level.toLowerCase()}`;
-                    badge.textContent = ent.risk_level;
+        // Fade after 10s
+        setTimeout(() => {
+            if (prefersReducedMotion) {
+                if (type === 'removed') {
+                    row.remove();
+                } else {
+                    row.classList.remove(type);
+                    badge.remove();
                 }
-                const scoreNum = row.querySelector('.score-num');
-                if (scoreNum) scoreNum.textContent = ent.score.toFixed(2);
-                const scoreFill = row.querySelector('.score-bar-fill');
-                if (scoreFill) {
-                    scoreFill.className = `score-bar-fill fill-${ent.risk_level.toLowerCase()}`;
-                    scoreFill.style.width = `${Math.round(ent.score * 100)}%`;
-                }
+            } else {
+                row.classList.add('delta-fading');
+                badge.style.opacity = '0';
+                setTimeout(() => {
+                    if (type === 'removed') {
+                        row.remove();
+                    } else {
+                        row.classList.remove(type, 'delta-fading');
+                        badge.remove();
+                    }
+                }, 1000);
             }
-        });
+        }, 10000);
+    }
 
-        // 2. Insert new rows with green highlight
-        (delta.new_entities || []).forEach((ent, idx) => {
+    function findRow(ent) {
+        const pidStr = ent.pid !== null && ent.pid !== undefined ? String(ent.pid) : null;
+        if (pidStr !== null && pidStr !== '') {
+            const byPid = tbody.querySelector(`tr[data-pid="${pidStr}"]`);
+            if (byPid) return byPid;
+        }
+        if (ent.process_name) {
+            return Array.from(tbody.querySelectorAll('tr.entity-row')).find(r => {
+                const nameAttr = r.getAttribute('data-process-name');
+                return nameAttr === ent.process_name || r.textContent.includes(ent.process_name);
+            });
+        }
+        return null;
+    }
+
+    // 1. Process CHANGED entities
+    changedEntities.forEach(ent => {
+        const row = findRow(ent);
+        if (row) {
+            const sev = (ent.risk_level || 'low').toLowerCase();
+            row.setAttribute('data-severity', ent.risk_level);
+            row.setAttribute('data-score', ent.score);
+            const sevBadge = row.querySelector('.badge-severity');
+            if (sevBadge) {
+                sevBadge.className = `badge badge-severity badge-${sev}`;
+                sevBadge.textContent = ent.risk_level;
+            }
+            const scoreNum = row.querySelector('.score-num');
+            if (scoreNum) scoreNum.textContent = Number(ent.score).toFixed(2);
+            const scoreFill = row.querySelector('.score-bar-fill');
+            if (scoreFill) {
+                scoreFill.className = `score-bar-fill fill-${sev}`;
+                scoreFill.style.width = `${Math.round(ent.score * 100)}%`;
+            }
+            setupDeltaHighlight(row, 'changed', 'CHANGED');
+        }
+    });
+
+    // 2. Process NEW entities
+    newEntities.forEach((ent, idx) => {
+        let row = findRow(ent);
+        if (!row) {
             const tr = document.createElement('tr');
             const rowId = `entity-row-dyn-${Date.now()}-${idx}`;
             const panelId = `waterfall-panel-dyn-${Date.now()}-${idx}`;
+            const sev = (ent.risk_level || 'low').toLowerCase();
             tr.id = rowId;
-            tr.className = `process-row entity-row severity-${ent.risk_level.toLowerCase()} row-updated`;
+            tr.className = `process-row entity-row severity-${sev}`;
             tr.setAttribute('data-severity', ent.risk_level);
             tr.setAttribute('data-pid', ent.pid ?? '');
             tr.setAttribute('data-score', ent.score);
@@ -834,48 +951,73 @@ async function applyLiveDeltaUpdates(prevScanId, newScanId) {
                                 <polyline points="6 9 12 15 18 9"></polyline>
                             </svg>
                         </button>
-                        <span class="badge badge-severity badge-${ent.risk_level.toLowerCase()}">${escapeHtml(ent.risk_level)}</span>
+                        <span class="badge badge-severity badge-${sev}">${escapeHtml(ent.risk_level)}</span>
                     </div>
                 </td>
                 <td>
                     <div class="score-container">
-                        <span class="score-num font-mono">${ent.score.toFixed(2)}</span>
-                        <div class="score-bar-bg"><div class="score-bar-fill fill-${ent.risk_level.toLowerCase()}" style="width: ${Math.round(ent.score * 100)}%;"></div></div>
+                        <span class="score-num font-mono">${Number(ent.score).toFixed(2)}</span>
+                        <div class="score-bar-bg"><div class="score-bar-fill fill-${sev}" style="width: ${Math.round(ent.score * 100)}%;"></div></div>
                     </div>
                 </td>
                 <td class="font-bold">${escapeHtml(ent.process_name)}</td>
                 <td class="font-mono">${ent.pid !== null && ent.pid !== undefined ? ent.pid : '<span class="text-tertiary">None</span>'}</td>
                 <td><span class="signal-chip">${escapeHtml(ent.signals_triggered || 'None')}</span></td>
                 <td><span class="badge badge-entity-type">${escapeHtml((ent.item_key || '').split(':')[0].toUpperCase() || 'PROC')}</span></td>
-                <td style="text-align: right;"><a href="/process/${ent.pid}?scan_id=${newScanId}" class="btn btn-sm btn-secondary">Evidence →</a></td>
+                <td style="text-align: right;"><a href="/process/${ent.pid}?scan_id=${currentScanId}" class="btn btn-sm btn-secondary">Evidence →</a></td>
             `;
+            tbody.prepend(tr);
+            row = tr;
+        }
+        setupDeltaHighlight(row, 'new', 'NEW');
+    });
 
-            const wtr = document.createElement('tr');
-            wtr.className = 'waterfall-row hidden';
-            wtr.id = panelId.replace('panel', 'row');
-            wtr.setAttribute('aria-hidden', 'true');
-            wtr.innerHTML = `
-                <td colspan="7" class="waterfall-cell">
-                    <div class="waterfall-panel" id="${panelId}" role="region" aria-label="Signal breakdown for ${escapeHtml(ent.process_name)}">
-                        ${SignalWaterfall.renderPanel(ent)}
+    // 3. Process REMOVED entities
+    removedEntities.forEach((ent, idx) => {
+        let row = findRow(ent);
+        if (!row) {
+            const tr = document.createElement('tr');
+            const rowId = `entity-row-dyn-rem-${Date.now()}-${idx}`;
+            const sev = (ent.risk_level || 'low').toLowerCase();
+            tr.id = rowId;
+            tr.className = `process-row entity-row severity-${sev}`;
+            tr.setAttribute('data-severity', ent.risk_level);
+            tr.setAttribute('data-pid', ent.pid ?? '');
+            tr.setAttribute('data-score', ent.score);
+            tr.setAttribute('data-signals', ent.signals_triggered || '');
+            tr.setAttribute('data-process-name', ent.process_name || '');
+            tr.innerHTML = `
+                <td class="cell-severity">
+                    <div class="severity-wrapper">
+                        <span class="badge badge-severity badge-${sev}">${escapeHtml(ent.risk_level)}</span>
                     </div>
                 </td>
+                <td>
+                    <div class="score-container">
+                        <span class="score-num font-mono">${Number(ent.score).toFixed(2)}</span>
+                        <div class="score-bar-bg"><div class="score-bar-fill fill-${sev}" style="width: ${Math.round(ent.score * 100)}%;"></div></div>
+                    </div>
+                </td>
+                <td class="font-bold">${escapeHtml(ent.process_name)}</td>
+                <td class="font-mono">${ent.pid !== null && ent.pid !== undefined ? ent.pid : '<span class="text-tertiary">None</span>'}</td>
+                <td><span class="signal-chip">${escapeHtml(ent.signals_triggered || 'None')}</span></td>
+                <td><span class="badge badge-entity-type">${escapeHtml((ent.item_key || '').split(':')[0].toUpperCase() || 'PROC')}</span></td>
+                <td style="text-align: right;"><span class="text-tertiary font-mono">Removed</span></td>
             `;
-            tbody.prepend(wtr);
-            tbody.prepend(tr);
-        });
-
-        // Update count badge
-        const countBadge = document.getElementById('visible-entity-count');
-        if (countBadge && data.total_count !== undefined) {
-            countBadge.textContent = `${data.total_count} entities`;
+            tbody.appendChild(tr);
+            row = tr;
         }
+        setupDeltaHighlight(row, 'removed', 'REMOVED');
+    });
 
+    if (typeof applyEntityFilters === 'function') {
         applyEntityFilters();
-    } catch (e) {
-        // Fallback to reload if delta rendering encounters issue
-        window.location.reload();
     }
+}
+
+// Backward compatibility wrapper
+async function applyLiveDeltaUpdates(prevScanId, newScanId) {
+    startEntityDeltaPolling(newScanId, prevScanId);
 }
 
 function animateMetricValue(elemId, targetVal) {

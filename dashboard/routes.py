@@ -376,6 +376,144 @@ def api_scores():
 
 
 # ===========================================================================
+# 3.1 REST API: Live Entity Delta Updates (Issue #8)
+# ===========================================================================
+@dashboard_bp.route("/api/entities/delta", methods=["GET"])
+def api_entities_delta():
+    """
+    Retrieves entity delta changes between scans (Issue #8).
+    Compares current scan's risk_scores with previous scan's risk_scores by PID.
+
+    Acceptance Criteria:
+    - Endpoint: GET /api/entities/delta?since=<scan_id>
+    - Optional: scan_id=<scan_id> (defaults to latest completed scan)
+    - Response: { "new": [...], "changed": [...], "removed": [...] }
+    - "New": PID not in previous scan
+    - "Changed": risk_level changed OR score changed > 5%
+    - "Removed": PID in previous scan but not in current scan
+    """
+    db_path = get_active_db_path()
+
+    # 1. Resolve current scan_id
+    raw_scan_id = request.args.get("scan_id")
+    if raw_scan_id is not None:
+        try:
+            current_scan_id = int(raw_scan_id)
+            if current_scan_id <= 0:
+                raise ValueError()
+        except ValueError:
+            abort(400, description="Invalid scan_id parameter (must be positive integer)")
+    else:
+        current_scan_id = db.get_latest_completed_scan_id(db_path=db_path)
+
+    if current_scan_id is None:
+        return jsonify({
+            "success": True,
+            "scan_id": None,
+            "since": None,
+            "new": [],
+            "changed": [],
+            "removed": [],
+            "counts": {"new": 0, "changed": 0, "removed": 0},
+        }), 200
+
+    # 2. Resolve since (previous) scan_id
+    raw_since = request.args.get("since")
+    if raw_since is None:
+        raw_since = request.args.get("since_scan_id")
+
+    since_scan_id: Optional[int] = None
+    if raw_since is not None:
+        try:
+            since_scan_id = int(raw_since)
+            if since_scan_id <= 0:
+                raise ValueError()
+        except ValueError:
+            abort(400, description="Invalid since parameter (must be positive integer)")
+    else:
+        # Fall back to the scan immediately preceding current_scan_id
+        with db.get_connection(db_path) as conn:
+            row = conn.execute(
+                "SELECT id FROM scan_history WHERE status = 'COMPLETED' AND id < ? ORDER BY id DESC LIMIT 1;",
+                (current_scan_id,),
+            ).fetchone()
+            if row:
+                since_scan_id = row["id"]
+
+    # 3. If since_scan_id is identical to current_scan_id: no deltas
+    if since_scan_id is not None and since_scan_id == current_scan_id:
+        return jsonify({
+            "success": True,
+            "scan_id": current_scan_id,
+            "since": since_scan_id,
+            "new": [],
+            "changed": [],
+            "removed": [],
+            "counts": {"new": 0, "changed": 0, "removed": 0},
+        }), 200
+
+    # 4. Fetch risk scores for current and previous scan
+    curr_scores = db.get_risk_scores_for_scan(current_scan_id, db_path=db_path)
+    prev_scores = (
+        db.get_risk_scores_for_scan(since_scan_id, db_path=db_path)
+        if since_scan_id is not None
+        else []
+    )
+
+    def get_entity_key(ent: Dict[str, Any]) -> Any:
+        pid = ent.get("pid")
+        if pid is not None:
+            return f"pid:{pid}"
+        return f"key:{ent.get('item_key') or ent.get('process_name')}"
+
+    prev_map = {get_entity_key(e): e for e in prev_scores}
+    curr_map = {get_entity_key(e): e for e in curr_scores}
+
+    # "New" = PID not in previous scan
+    new_entities = [dict(curr) for k, curr in curr_map.items() if k not in prev_map]
+
+    # "Removed" = PID in previous but not current
+    removed_entities = [dict(prev) for k, prev in prev_map.items() if k not in curr_map]
+
+    # "Changed" = risk_level or score changed > 5%
+    changed_entities = []
+    for k, curr in curr_map.items():
+        if k in prev_map:
+            prev = prev_map[k]
+            curr_score = float(curr.get("score") or 0.0)
+            prev_score = float(prev.get("score") or 0.0)
+            score_diff = abs(curr_score - prev_score)
+
+            curr_level = str(curr.get("risk_level") or "")
+            prev_level = str(prev.get("risk_level") or "")
+
+            level_changed = curr_level != prev_level
+            # Score changed > 5% (either absolute change > 0.05 on 0.0-1.0 scale or relative change > 5%)
+            score_changed = (score_diff > 0.05) or (prev_score > 0 and (score_diff / prev_score) > 0.05 and score_diff >= 0.01)
+
+            if level_changed or score_changed:
+                item = dict(curr)
+                item["prev_risk_level"] = prev_level
+                item["prev_score"] = prev_score
+                item["score_delta"] = round(curr_score - prev_score, 4)
+                changed_entities.append(item)
+
+    return jsonify({
+        "success": True,
+        "scan_id": current_scan_id,
+        "since": since_scan_id,
+        "new": new_entities,
+        "changed": changed_entities,
+        "removed": removed_entities,
+        "counts": {
+            "new": len(new_entities),
+            "changed": len(changed_entities),
+            "removed": len(removed_entities),
+        },
+    }), 200
+
+
+# ===========================================================================
 # 4. REST API: Forensic Evidence & Findings (FR-4.6, FR-6.3)
 # ===========================================================================
 @dashboard_bp.route("/api/findings/<int:scan_id>", methods=["GET"])

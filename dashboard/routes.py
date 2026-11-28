@@ -18,12 +18,14 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from flask import (
     Blueprint,
+    Response,
     abort,
     current_app,
     jsonify,
     render_template,
     request,
     session,
+    stream_with_context,
 )
 
 import config
@@ -1236,4 +1238,50 @@ def api_run_scenarios():
             "status": "ok",
             "results": [res],
         }), 200
+
+
+@dashboard_bp.route("/api/simulations/stream/<scenario_id>", methods=["GET"])
+def api_simulations_stream(scenario_id: str):
+    """
+    SSE endpoint for real-time simulation progress streaming.
+
+    Every frame is emitted as an unnamed SSE message (`data:` only). The event
+    name is carried inside the JSON payload's "type" field, which lets the
+    browser consume all frames through a single EventSource.onmessage handler.
+
+    Invariants:
+    1. Nothing is yielded from a `finally` block. A client disconnect closes the
+       generator via GeneratorExit; yielding there raises
+       "RuntimeError: generator ignored GeneratorExit" and kills the worker.
+    2. The terminal `complete`/`error` event comes from the runner generators
+       themselves, exactly once.
+    """
+    import simulators.scenario_runner as runner
+
+    def generate():
+        try:
+            events = (
+                runner.run_all_scenarios_stream()
+                if scenario_id == "all"
+                else runner.run_scenario_stream(scenario_id)
+            )
+            for event in events:
+                yield f"data: {json.dumps(event)}\n\n"
+        except GeneratorExit:
+            # Client cancelled (modal closed / tab closed). Stop quietly.
+            logger.info("SSE stream closed by client for scenario %s", scenario_id)
+            raise
+        except Exception as e:
+            logger.exception("SSE stream error for scenario %s: %s", scenario_id, e)
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 

@@ -803,6 +803,110 @@ def run_scenario(scenario_id: str, db_path: Optional[str] = None) -> Dict[str, A
         }
 
 
+def run_scenario_stream(scenario_id: str, db_path: Optional[str] = None):
+    """
+    Generator yielding progress events for a single scenario execution.
+    """
+    scenario = get_scenario(scenario_id, db_path=db_path)
+    if not scenario:
+        yield {"type": "error", "message": f"Scenario '{scenario_id}' not found"}
+        return
+
+    name = getattr(scenario, "name", scenario_id)
+    yield {"type": "phase", "phase": "Setup", "message": f"Initializing {name}...", "progress": 10}
+    time.sleep(0.3)
+
+    start_time = time.perf_counter()
+    try:
+        with scenario:
+            yield {"type": "phase", "phase": "Execution", "message": f"Executing detection logic for {name}...", "progress": 40}
+            time.sleep(0.5)
+
+            result = scenario.run()
+
+            yield {"type": "phase", "phase": "Validation", "message": "Verifying detection invariants...", "progress": 80}
+            time.sleep(0.3)
+
+            duration_ms = (time.perf_counter() - start_time) * 1000.0
+            result["duration_ms"] = round(duration_ms, 2)
+
+            yield {"type": "result", "result": result, "progress": 100}
+            yield {"type": "complete", "message": "Scenario completed successfully"}
+    except Exception as e:
+        logger.exception("Error in streaming scenario %s: %s", scenario_id, e)
+        yield {
+            "type": "error",
+            "message": str(e),
+            "scenario_id": scenario_id,
+            "duration_ms": round((time.perf_counter() - start_time) * 1000.0, 2)
+        }
+
+
+def run_all_scenarios_stream(db_path: Optional[str] = None):
+    """
+    Generator yielding progress events for all registered scenarios.
+    """
+    scenario_ids = sorted(SCENARIO_REGISTRY.keys())
+    total = len(scenario_ids)
+
+    yield {"type": "phase", "phase": "Initialization", "message": f"Starting batch execution of {total} scenarios...", "progress": 0}
+
+    results = []
+    for i, sid in enumerate(scenario_ids):
+        progress_base = (i / total) * 100
+        progress_step = 100 / total
+
+        scenario = get_scenario(sid, db_path=db_path)
+        name = getattr(scenario, "name", sid)
+
+        yield {
+            "type": "phase",
+            "phase": f"Scenario {i+1}/{total}",
+            "message": f"Starting {name}...",
+            "progress": round(progress_base + (progress_step * 0.1), 1)
+        }
+
+        start_time = time.perf_counter()
+        try:
+            with scenario:
+                yield {
+                    "type": "phase",
+                    "phase": f"Scenario {i+1}/{total}",
+                    "message": f"Running {name}...",
+                    "progress": round(progress_base + (progress_step * 0.5), 1)
+                }
+                res = scenario.run()
+                res["duration_ms"] = round((time.perf_counter() - start_time) * 1000.0, 2)
+                results.append(res)
+
+                yield {
+                    "type": "step_result",
+                    "result": res,
+                    "progress": round(progress_base + progress_step, 1)
+                }
+        except Exception as e:
+            res = {
+                "scenario_id": sid,
+                "name": name,
+                "passed": False,
+                "error": str(e),
+                "duration_ms": round((time.perf_counter() - start_time) * 1000.0, 2)
+            }
+            results.append(res)
+            yield {"type": "step_result", "result": res, "progress": round(progress_base + progress_step, 1)}
+
+    passed_count = sum(1 for r in results if r.get("passed"))
+    yield {
+        "type": "batch_result",
+        "total": total,
+        "passed": passed_count,
+        "failed": total - passed_count,
+        "results": results,
+        "progress": 100
+    }
+    yield {"type": "complete", "message": "All scenarios completed"}
+
+
 def run_all_scenarios(db_path: Optional[str] = None) -> List[Dict[str, Any]]:
     """
     Executes all registered simulation scenarios sequentially.

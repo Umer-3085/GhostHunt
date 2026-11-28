@@ -4522,3 +4522,150 @@ tr.waterfall-row.is-expanded .waterfall-panel {
     max-height: 95vh;
   }
 }
+/* === SIMULATION SSE MODAL === */
+.simulation-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    backdrop-filter: blur(8px);
+    background: rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.simulation-modal {
+    width: 600px;
+    max-width: 90%;
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-hairline);
+    border-radius: 12px;
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+}
+
+.simulation-modal .modal-header {
+    padding: var(--space-md) var(--space-lg);
+    border-bottom: 1px solid var(--color-hairline);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.simulation-modal .modal-body {
+    padding: var(--space-lg);
+    flex: 1;
+    overflow-y: auto;
+}
+
+.simulation-modal .modal-footer {
+    padding: var(--space-md) var(--space-lg);
+    border-top: 1px solid var(--color-hairline);
+    display: flex;
+    justify-content: flex-end;
+}
+
+.simulation-progress-bar-wrap {
+    margin-bottom: var(--space-lg);
+}
+
+.simulation-progress-bar {
+    height: 6px;
+    background: var(--color-hairline);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.simulation-progress-fill {
+    height: 100%;
+    background: var(--color-primary);
+    width: 0%;
+    transition: width 0.3s ease;
+}
+
+.simulation-phase {
+    margin-top: var(--space-xs);
+    font-size: var(--text-caption);
+    color: var(--color-ink-muted);
+    font-family: var(--font-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.simulation-log {
+    background: var(--color-canvas);
+    border: 1px solid var(--color-hairline);
+    border-radius: 8px;
+    padding: var(--space-md);
+    height: 300px;
+    overflow-y: auto;
+    font-family: var(--font-mono);
+    font-size: var(--text-data-mono);
+    line-height: var(--leading-data-mono);
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-hairline-strong) transparent;
+}
+
+.simulation-log::-webkit-scrollbar { width: 6px; }
+.simulation-log::-webkit-scrollbar-thumb { background: var(--color-hairline-strong); border-radius: 3px; }
+
+.simulation-log-entry {
+    margin-bottom: 4px;
+    padding-left: var(--space-xs);
+    border-left: 2px solid transparent;
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-sm);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.simulation-log-time {
+    flex: 0 0 auto;
+    color: var(--color-ink-tertiary);
+    font-variant-numeric: tabular-nums;
+    user-select: none;
+    opacity: 0.75;
+}
+
+.simulation-log-message {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.simulation-log-empty {
+    color: var(--color-ink-tertiary);
+    font-style: italic;
+}
+
+/* The Execution Results Summary reuses the shared .metric-value style, whose
+   display-size type can overflow a 220px grid track. Scoped here so the main
+   dashboard metric cards keep their current look. */
+#simulation-summary-card .metric-value {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    line-height: 1.2;
+}
+
+#simulation-summary-card .metric-title {
+    overflow-wrap: anywhere;
+}
+
+.log-phase { color: var(--color-primary); font-weight: 600; margin-top: var(--space-sm); }
+.log-step { color: var(--color-ink-muted); }
+.log-info { color: var(--color-ink-tertiary); }
+.log-success { color: var(--color-risk-low); }
+.log-error { color: var(--color-risk-high); }
+.log-result { 
+    background: rgba(94, 106, 210, 0.08); 
+    border-left: 2px solid var(--color-primary); 
+    padding: var(--space-sm) var(--space-md);
+    margin: var(--space-md) 0;
+    border-radius: 0 4px 4px 0;
+}
+.log-meta { color: var(--color-ink-tertiary); font-size: 0.9em; }
+

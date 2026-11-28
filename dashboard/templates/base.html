@@ -68,12 +68,15 @@
                         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
                     </svg>
                 </button>
-                <button type="button" class="btn btn-primary btn-manual-scan" id="btn-manual-scan" onclick="triggerManualScan()" aria-label="Run manual scan (S)">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
-                    </svg>
-                    <span>Run Scan</span>
-                </button>
+                <div class="scan-lock-control" id="scan-control-manual">
+                    <button type="button" class="btn btn-primary btn-manual-scan" id="btn-manual-scan" onclick="triggerManualScan()" aria-label="Run manual scan (S)">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                        </svg>
+                        <span>Run Scan</span>
+                    </button>
+                    <span class="scan-lock-badge" id="scan-badge-manual" role="status" hidden></span>
+                </div>
                 <button type="button" class="btn btn-secondary btn-sm btn-help" id="btn-help" onclick="showHelpOverlay()" aria-label="Keyboard shortcuts (?)">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                         <circle cx="12" cy="12" r="10"/>

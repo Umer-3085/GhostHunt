@@ -185,10 +185,7 @@ async function triggerManualScan() {
             // Concurrency Guard Conflict — silent, progress panel shows state
             console.debug('Manual scan 409: another operation in progress');
             stopScanProgressPolling();
-            if (btn) {
-                btn.disabled = false;
-                btn.innerHTML = SCAN_BTN_IDLE_HTML;
-            }
+            syncScanStateOnLoad();
         } else if (response.ok) {
             showToast('Scan initiated. Tracking phases…', 'info', 3000);
             // Polling will handle completion and reset the button
@@ -351,6 +348,7 @@ function updateSchedulerEta(data) {
         etaEl.textContent = 'Next scan: —';
         etaEl.style.display = 'none';
         _etaNextScanMs = null;
+        updateScanLockEta();
         return;
     }
 
@@ -366,6 +364,7 @@ function updateSchedulerEta(data) {
     if (!lastScanMs) {
         etaEl.textContent = 'Next scan: calculating...';
         etaEl.style.display = 'inline-flex';
+        updateScanLockEta();
         return;
     }
 
@@ -386,10 +385,20 @@ function updateSchedulerEta(data) {
                 el.textContent = `Next scan in: ${formatDuration(remaining)}`;
                 el.classList.remove('text-warning');
             }
+            updateScanLockEta();
             _etaCountdownId = setTimeout(tick, 1000);
         };
         tick();
     }
+}
+
+function updateScanLockEta() {
+    const source = document.getElementById('scheduler-eta');
+    const etaText = source && source.style.display !== 'none' ? source.textContent : '';
+    document.querySelectorAll('.scan-lock-eta').forEach((eta) => {
+        eta.textContent = etaText;
+        eta.hidden = !etaText;
+    });
 }
 
 // Asynchronous 5-Second Status Poller (FR-6.6)
@@ -432,6 +441,7 @@ async function pollStatus() {
             if (sp.phase === 'idle' || (sp.phase === 'complete' && dismissedScanProgressId === sp.scan_id)) {
                 const panel = document.getElementById('scan-progress-panel');
                 if (panel) panel.classList.remove('visible');
+                updateScanActionControls(sp);
                 stopScanProgressPolling();
             } else {
                 updateScanProgressPanel(sp);
@@ -517,22 +527,11 @@ async function syncScanStateOnLoad() {
         if (!response.ok) return;
         const data = await response.json();
         const progress = data.progress;
+        updateScanActionControls(progress || { phase: 'idle' });
         if (progress && progress.phase !== 'idle' && progress.phase !== 'complete') {
-            // Server scan is running — start progress polling and disable button
-            const btn = document.getElementById('btn-manual-scan');
-            if (btn) {
-                btn.disabled = true;
-                btn.innerHTML = '<span class="spin">⟳</span> <span>Scanning...</span>';
-            }
+            // Server scan is running — start progress polling and update the panel
             startScanProgressPolling();
             updateScanProgressPanel(progress);
-        } else {
-            // No scan running — ensure button enabled
-            const btn = document.getElementById('btn-manual-scan');
-            if (btn) {
-                btn.disabled = false;
-                btn.innerHTML = SCAN_BTN_IDLE_HTML;
-            }
         }
     } catch (e) {
         // Silent failure — button stays enabled by default
@@ -558,6 +557,7 @@ async function pollScanProgress() {
 }
 
 function updateScanProgressPanel(progress) {
+    updateScanActionControls(progress);
     const panel = document.getElementById('scan-progress-panel');
     const fill = document.getElementById('scan-progress-fill');
     const label = document.getElementById('scan-progress-label');
@@ -631,6 +631,59 @@ function updateScanProgressPanel(progress) {
     }
 }
 
+function updateScanActionControls(progress) {
+    const phase = progress && progress.phase ? progress.phase : 'idle';
+    const busy = phase !== 'idle' && phase !== 'complete';
+    const percent = Number.isFinite(Number(progress && progress.progress))
+        ? Math.max(0, Math.min(100, Number(progress.progress)))
+        : 0;
+    const phaseLabels = {
+        process_views: 'Process Views',
+        persistence: 'Persistence',
+        signatures: 'Signatures',
+        correlation: 'Correlation',
+    };
+    const phaseText = phaseLabels[phase] || phase.replace(/_/g, ' ');
+    const statusText = busy ? `${phaseText} ${percent}%` : '';
+    const tooltip = busy
+        ? `Waiting for background scan to complete (${statusText})`
+        : '';
+    const manualButton = document.getElementById('btn-manual-scan');
+
+    if (manualButton) {
+        manualButton.disabled = busy;
+        manualButton.title = tooltip;
+        manualButton.innerHTML = busy
+            ? '<span class="spin">⟳</span> <span>Scanning...</span>'
+            : SCAN_BTN_IDLE_HTML;
+        const wrapper = document.getElementById('scan-control-manual');
+        if (wrapper) {
+            wrapper.title = tooltip;
+            wrapper.tabIndex = busy ? 0 : -1;
+        }
+        const badge = document.getElementById('scan-badge-manual');
+        if (badge) {
+            badge.textContent = busy ? `Scan in progress · ${statusText}` : '';
+            badge.hidden = !busy;
+        }
+    }
+
+    document.querySelectorAll('.btn-reset-baselines').forEach((button) => {
+        button.disabled = busy;
+        button.title = tooltip;
+        const wrapper = button.closest('.scan-lock-control');
+        if (!wrapper) return;
+        wrapper.title = tooltip;
+        wrapper.tabIndex = busy ? 0 : -1;
+        const badge = wrapper.querySelector('.scan-lock-badge');
+        if (badge) {
+            badge.textContent = busy ? `Scan in progress · ${statusText}` : '';
+            badge.hidden = !busy;
+        }
+    });
+    updateScanLockEta();
+}
+
 function startScanProgressPolling() {
     if (scanProgressIntervalId) return;
     pollScanProgress(); // immediate first poll
@@ -646,27 +699,7 @@ function stopScanProgressPolling() {
         clearTimeout(scanProgressDismissTimer);
         scanProgressDismissTimer = null;
     }
-    const btn = document.getElementById('btn-manual-scan');
-    if (btn && btn.disabled) {
-        btn.disabled = false;
-        btn.innerHTML = SCAN_BTN_IDLE_HTML;
-    }
 }
-
-// Safety net: ensure button state matches actual scan state every 5s
-setInterval(() => {
-    const btn = document.getElementById('btn-manual-scan');
-    if (!btn) return;
-    // If no progress polling active and no scan in progress per UI, ensure button enabled
-    if (!scanProgressIntervalId && !scanProgressDismissTimer) {
-        const panel = document.getElementById('scan-progress-panel');
-        const isScanActive = panel && panel.classList.contains('visible');
-        if (!isScanActive && btn.disabled) {
-            btn.disabled = false;
-            btn.innerHTML = SCAN_BTN_IDLE_HTML;
-        }
-    }
-}, 5000);
 
 // ===========================================================================
 // Notification Bell (Day 2)

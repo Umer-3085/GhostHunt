@@ -37,9 +37,13 @@
             <a href="#baseline-card" class="btn btn-secondary" onclick="document.getElementById('baseline-card')?.scrollIntoView({behavior:'smooth'}); return false;">
                 Inspect Candidates ↓
             </a>
-            <button type="button" class="btn btn-danger" onclick="confirmResetBaseline()">
-                ↺ Reset All
-            </button>
+            <div class="scan-lock-control scan-lock-control--reset">
+                <button type="button" class="btn btn-danger btn-reset-baselines" onclick="confirmResetBaseline()">
+                    ↺ Reset All
+                </button>
+                <span class="scan-lock-badge" role="status" hidden></span>
+                <span class="scan-lock-eta" hidden></span>
+            </div>
         </div>
     </div>
     {% endif %}
@@ -347,9 +351,13 @@
                 <span class="badge badge-secondary">Fixed Reference Model</span>
             </div>
             <div class="card-header-actions">
-                <button type="button" class="btn btn-sm btn-danger" onclick="confirmResetBaseline()">
-                    ↺ Reset Baselines
-                </button>
+                <div class="scan-lock-control scan-lock-control--reset">
+                    <button type="button" class="btn btn-sm btn-danger btn-reset-baselines" onclick="confirmResetBaseline()">
+                        ↺ Reset Baselines
+                    </button>
+                    <span class="scan-lock-badge" role="status" hidden></span>
+                    <span class="scan-lock-eta" hidden></span>
+                </div>
             </div>
         </div>
 

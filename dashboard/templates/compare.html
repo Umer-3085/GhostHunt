@@ -1,0 +1,546 @@
+{% extends "base.html" %}
+
+{% block title %}Scan Comparison: #{{ scan_a_id or '—' }} vs #{{ scan_b_id or '—' }} — {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="compare-view" data-scan-a="{{ scan_a_id or '' }}" data-scan-b="{{ scan_b_id or '' }}">
+    <!-- View Header & Controls -->
+    <div class="view-header">
+        <div class="compare-header-row">
+            <div>
+                <nav class="breadcrumb text-tertiary" aria-label="Breadcrumb" style="font-size: var(--text-caption); margin-bottom: var(--space-xs);">
+                    <a href="/history">Scan History</a> &rsaquo; <span>Side-by-Side Comparison</span>
+                </nav>
+                <h1 class="display-md">
+                    Scan Comparison: <span class="font-mono text-primary" id="title-scans">#{{ scan_a_id or '—' }} vs #{{ scan_b_id or '—' }}</span>
+                </h1>
+                <p class="subtitle">Side-by-side behavioral entity comparison and risk score differential analysis.</p>
+            </div>
+            <div class="compare-selectors">
+                <div class="selector-group">
+                    <label for="select-scan-a" class="text-tertiary" style="font-size: var(--text-caption); display: block; margin-bottom: 2px;">Baseline (Scan A):</label>
+                    <select id="select-scan-a" class="compare-select" aria-label="Select Baseline Scan A">
+                        {% for s in history %}
+                        {% if s.status == 'COMPLETED' %}
+                        <option value="{{ s.id }}" {% if scan_a_id == s.id %}selected{% endif %}>
+                            #{{ s.id }} ({{ s.scan_time or s.started_at }})
+                        </option>
+                        {% endif %}
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-swap-scans" title="Swap Scan A and Scan B" aria-label="Swap Scans" style="margin-top: 14px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <polyline points="17 1 21 5 17 9"></polyline>
+                        <path d="M3 5h18"></path>
+                        <polyline points="7 23 3 19 7 15"></polyline>
+                        <path d="M21 19H3"></path>
+                    </svg>
+                    <span>Swap (A ↔ B)</span>
+                </button>
+
+                <div class="selector-group">
+                    <label for="select-scan-b" class="text-tertiary" style="font-size: var(--text-caption); display: block; margin-bottom: 2px;">Comparison (Scan B):</label>
+                    <select id="select-scan-b" class="compare-select" aria-label="Select Comparison Scan B">
+                        {% for s in history %}
+                        {% if s.status == 'COMPLETED' %}
+                        <option value="{{ s.id }}" {% if scan_b_id == s.id %}selected{% endif %}>
+                            #{{ s.id }} ({{ s.scan_time or s.started_at }})
+                        </option>
+                        {% endif %}
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <a href="/history" class="btn btn-secondary btn-sm" style="margin-top: 14px;">← Back to History</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Summary Cards Grid -->
+    <section aria-label="Comparison Summary Metrics">
+        <div class="compare-grid" id="compare-summary-cards">
+            <!-- Total Entities -->
+            <div class="compare-summary-card">
+                <span class="card-label">Total Entities (A vs B)</span>
+                <div class="card-values">
+                    <span class="val-main font-mono" id="summary-total-val">— vs —</span>
+                    <span class="val-delta neutral" id="summary-total-delta">Δ 0</span>
+                </div>
+            </div>
+            <!-- High Risk Entities -->
+            <div class="compare-summary-card">
+                <span class="card-label text-danger">High Risk (A vs B)</span>
+                <div class="card-values">
+                    <span class="val-main font-mono text-danger" id="summary-high-val">— vs —</span>
+                    <span class="val-delta neutral font-mono" id="summary-high-delta">Δ 0</span>
+                </div>
+            </div>
+            <!-- Medium Risk Entities -->
+            <div class="compare-summary-card">
+                <span class="card-label text-warning">Medium Risk (A vs B)</span>
+                <div class="card-values">
+                    <span class="val-main font-mono text-warning" id="summary-med-val">— vs —</span>
+                    <span class="val-delta neutral font-mono" id="summary-med-delta">Δ 0</span>
+                </div>
+            </div>
+            <!-- Low Risk Entities -->
+            <div class="compare-summary-card">
+                <span class="card-label text-success">Low Risk (A vs B)</span>
+                <div class="card-values">
+                    <span class="val-main font-mono text-success" id="summary-low-val">— vs —</span>
+                    <span class="val-delta neutral font-mono" id="summary-low-delta">Δ 0</span>
+                </div>
+            </div>
+            <!-- New Entities -->
+            <div class="compare-summary-card">
+                <span class="card-label text-success">New Entities in B</span>
+                <div class="card-values">
+                    <span class="val-main font-mono text-success" id="summary-new-val">0</span>
+                    <span class="val-delta positive">Appeared</span>
+                </div>
+            </div>
+            <!-- Removed Entities -->
+            <div class="compare-summary-card">
+                <span class="card-label text-danger">Removed from A</span>
+                <div class="card-values">
+                    <span class="val-main font-mono text-danger" id="summary-removed-val">0</span>
+                    <span class="val-delta negative">Resolved</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Filter and Search Toolbar -->
+    <div class="card-filter-bar" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-md); margin-bottom: var(--space-md);">
+        <div class="filter-tabs" role="tablist" aria-label="Entity Diff Filter">
+            <button type="button" class="btn-filter active" id="filter-tab-all" onclick="setDiffFilter('all', this)">All Entities (<span id="count-all">0</span>)</button>
+            <button type="button" class="btn-filter" id="filter-tab-changed" onclick="setDiffFilter('changed', this)">Changed (<span id="count-changed">0</span>)</button>
+            <button type="button" class="btn-filter text-success" id="filter-tab-new" onclick="setDiffFilter('new', this)">New in B (<span id="count-new">0</span>)</button>
+            <button type="button" class="btn-filter text-danger" id="filter-tab-removed" onclick="setDiffFilter('removed', this)">Removed from A (<span id="count-removed">0</span>)</button>
+            <button type="button" class="btn-filter text-tertiary" id="filter-tab-unchanged" onclick="setDiffFilter('unchanged', this)">Unchanged (<span id="count-unchanged">0</span>)</button>
+        </div>
+        <div class="search-box" style="min-width: 260px;">
+            <input type="text" id="compare-search" class="form-control" placeholder="Filter by process name or PID..." oninput="handleSearch(this.value)">
+        </div>
+    </div>
+
+    <!-- Side-by-Side Comparison Table Section -->
+    <section class="card" style="padding: 0; overflow: hidden;">
+        <div class="card-header" style="padding: var(--space-md) var(--space-lg); border-bottom: 1px solid var(--color-hairline);">
+            <div class="card-header-title">
+                <h2 class="card-title">Side-by-Side Entity Risk Differentials</h2>
+                <span class="badge badge-secondary" id="visible-count-badge">Loading...</span>
+            </div>
+            <div class="compare-legend" style="font-size: var(--text-caption);">
+                <span class="compare-legend-item"><span class="compare-dot dot-new"></span> New</span>
+                <span class="compare-legend-item"><span class="compare-dot dot-resolved"></span> Removed</span>
+                <span class="compare-legend-item"><span class="compare-dot dot-escalated"></span> Risk ↑</span>
+                <span class="compare-legend-item"><span class="compare-dot dot-deescalated"></span> Risk ↓</span>
+                <span class="compare-legend-item"><span class="compare-dot dot-unchanged"></span> Unchanged</span>
+            </div>
+        </div>
+
+        <div id="compare-loading-indicator" class="compare-loading" style="padding: var(--space-xl); text-align: center;">
+            <span class="spin">⟳</span> Fetching and computing side-by-side entity differences...
+        </div>
+
+        <div class="table-responsive compare-table-wrapper" id="compare-table-container" style="display: none;">
+            <table class="compare-table" id="compare-table">
+                <thead>
+                    <tr>
+                        <!-- Scan A Left Headers -->
+                        <th style="width: 110px;">Scan A Severity</th>
+                        <th style="width: 85px;">Score A</th>
+                        <th style="min-width: 180px;">Process / Entity A</th>
+                        <th style="width: 75px;">PID A</th>
+                        <!-- Diff Center Header -->
+                        <th class="th-diff" style="min-width: 170px;">
+                            Diff / Delta
+                            <span class="font-mono text-tertiary" id="th-diff-delta" style="font-size: var(--text-caption); display: block; font-weight: normal;">(A → B)</span>
+                        </th>
+                        <!-- Scan B Right Headers -->
+                        <th style="width: 110px;">Scan B Severity</th>
+                        <th style="width: 85px;">Score B</th>
+                        <th style="min-width: 180px;">Process / Entity B</th>
+                        <th style="width: 75px;">PID B</th>
+                    </tr>
+                </thead>
+                <tbody id="compare-tbody">
+                    <!-- Populated dynamically via JS -->
+                </tbody>
+            </table>
+        </div>
+        <div id="compare-empty-state" class="empty-state-card" style="display: none; padding: var(--space-xl); text-align: center;">
+            <p class="text-tertiary">No entities match the selected filter criteria.</p>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    let currentScanA = parseInt(document.querySelector('.compare-view').dataset.scanA) || null;
+    let currentScanB = parseInt(document.querySelector('.compare-view').dataset.scanB) || null;
+    let alignedEntities = [];
+    let activeFilter = 'all';
+    let searchQuery = '';
+
+    const selectA = document.getElementById('select-scan-a');
+    const selectB = document.getElementById('select-scan-b');
+    const swapBtn = document.getElementById('btn-swap-scans');
+
+    if (selectA) {
+        selectA.addEventListener('change', () => {
+            currentScanA = parseInt(selectA.value);
+            updateUrlAndReload();
+        });
+    }
+
+    if (selectB) {
+        selectB.addEventListener('change', () => {
+            currentScanB = parseInt(selectB.value);
+            updateUrlAndReload();
+        });
+    }
+
+    if (swapBtn) {
+        swapBtn.addEventListener('click', () => {
+            const temp = currentScanA;
+            currentScanA = currentScanB;
+            currentScanB = temp;
+            if (selectA) selectA.value = currentScanA;
+            if (selectB) selectB.value = currentScanB;
+            updateUrlAndReload();
+        });
+    }
+
+    function updateUrlAndReload() {
+        if (!currentScanA || !currentScanB) return;
+        const newUrl = `/history/compare?scan_a=${currentScanA}&scan_b=${currentScanB}`;
+        window.history.pushState({ scanA: currentScanA, scanB: currentScanB }, '', newUrl);
+        const titleEl = document.getElementById('title-scans');
+        if (titleEl) titleEl.textContent = `#${currentScanA} vs #${currentScanB}`;
+        loadAndDiffScans(currentScanA, currentScanB);
+    }
+
+    window.addEventListener('popstate', () => {
+        const params = new URLSearchParams(window.location.search);
+        currentScanA = parseInt(params.get('scan_a')) || currentScanA;
+        currentScanB = parseInt(params.get('scan_b')) || currentScanB;
+        if (selectA) selectA.value = currentScanA;
+        if (selectB) selectB.value = currentScanB;
+        loadAndDiffScans(currentScanA, currentScanB);
+    });
+
+    // Client-side diff and alignment
+    async function loadAndDiffScans(idA, idB) {
+        const loader = document.getElementById('compare-loading-indicator');
+        const container = document.getElementById('compare-table-container');
+        const emptyState = document.getElementById('compare-empty-state');
+
+        if (loader) loader.style.display = 'block';
+        if (container) container.style.display = 'none';
+        if (emptyState) emptyState.style.display = 'none';
+
+        try {
+            const [resA, resB] = await Promise.all([
+                fetch(`/api/scores?scan_id=${idA}&per_page=500`),
+                fetch(`/api/scores?scan_id=${idB}&per_page=500`)
+            ]);
+
+            if (!resA.ok || !resB.ok) {
+                throw new Error('Failed to fetch scan score data');
+            }
+
+            const dataA = await resA.json();
+            const dataB = await resB.json();
+
+            const entitiesA = dataA.entities || [];
+            const entitiesB = dataB.entities || [];
+
+            computeAlignmentAndDiff(entitiesA, entitiesB, idA, idB);
+
+            if (loader) loader.style.display = 'none';
+            if (container) container.style.display = 'block';
+            renderTable();
+        } catch (err) {
+            if (loader) {
+                loader.innerHTML = `<p class="text-danger">Failed to load comparison: ${escapeHtml(err.message)}</p>`;
+            }
+        }
+    }
+
+    function getEntityKey(e) {
+        if (!e) return '';
+        if (e.pid !== null && e.pid !== undefined) return `pid:${e.pid}`;
+        return `key:${e.item_key || e.process_name}`;
+    }
+
+    function computeAlignmentAndDiff(entitiesA, entitiesB, idA, idB) {
+        const mapA = new Map();
+        const mapB = new Map();
+
+        entitiesA.forEach(e => mapA.set(getEntityKey(e), e));
+        entitiesB.forEach(e => mapB.set(getEntityKey(e), e));
+
+        const allKeys = new Set([...mapA.keys(), ...mapB.keys()]);
+
+        const riskOrder = { HIGH: 3, MEDIUM: 2, LOW: 1 };
+        const emojiMap = { HIGH: '🔴', MEDIUM: '🟡', LOW: '🟢' };
+
+        alignedEntities = [];
+
+        let highA = 0, medA = 0, lowA = 0;
+        let highB = 0, medB = 0, lowB = 0;
+        let newCount = 0, removedCount = 0, changedCount = 0, unchangedCount = 0;
+
+        allKeys.forEach(key => {
+            const entA = mapA.get(key) || null;
+            const entB = mapB.get(key) || null;
+
+            if (entA) {
+                if (entA.risk_level === 'HIGH') highA++;
+                else if (entA.risk_level === 'MEDIUM') medA++;
+                else if (entA.risk_level === 'LOW') lowA++;
+            }
+            if (entB) {
+                if (entB.risk_level === 'HIGH') highB++;
+                else if (entB.risk_level === 'MEDIUM') medB++;
+                else if (entB.risk_level === 'LOW') lowB++;
+            }
+
+            let status = 'unchanged';
+            let diffCellClass = 'neutral';
+            let riskChangeText = '—';
+            let scoreDeltaNum = 0.0;
+            let scoreDeltaStr = '0.00';
+
+            if (!entA && entB) {
+                status = 'new';
+                newCount++;
+                diffCellClass = 'positive';
+                riskChangeText = `— → ${emojiMap[entB.risk_level] || entB.risk_level}`;
+                scoreDeltaNum = entB.score;
+                scoreDeltaStr = `+${entB.score.toFixed(2)}`;
+            } else if (entA && !entB) {
+                status = 'removed';
+                removedCount++;
+                diffCellClass = 'negative';
+                riskChangeText = `${emojiMap[entA.risk_level] || entA.risk_level} → —`;
+                scoreDeltaNum = -entA.score;
+                scoreDeltaStr = `-${entA.score.toFixed(2)}`;
+            } else if (entA && entB) {
+                scoreDeltaNum = entB.score - entA.score;
+                const scoreDiff = Math.abs(scoreDeltaNum);
+                scoreDeltaStr = (scoreDeltaNum > 0 ? '+' : '') + scoreDeltaNum.toFixed(2);
+
+                const levelChanged = entA.risk_level !== entB.risk_level;
+                const scoreChanged = scoreDiff > 0.01;
+
+                if (levelChanged) {
+                    riskChangeText = `${emojiMap[entA.risk_level] || entA.risk_level} → ${emojiMap[entB.risk_level] || entB.risk_level}`;
+                } else {
+                    riskChangeText = `${emojiMap[entA.risk_level] || entA.risk_level} (same)`;
+                }
+
+                if (levelChanged || scoreChanged) {
+                    status = 'changed';
+                    changedCount++;
+                    const rankA = riskOrder[entA.risk_level] || 0;
+                    const rankB = riskOrder[entB.risk_level] || 0;
+                    if (rankB > rankA || scoreDeltaNum > 0.05) {
+                        diffCellClass = 'negative'; // risk increased
+                    } else if (rankB < rankA || scoreDeltaNum < -0.05) {
+                        diffCellClass = 'positive'; // risk decreased
+                    } else {
+                        diffCellClass = 'neutral';
+                    }
+                } else {
+                    status = 'unchanged';
+                    unchangedCount++;
+                    diffCellClass = 'neutral';
+                }
+            }
+
+            alignedEntities.push({
+                key,
+                entA,
+                entB,
+                status,
+                diffCellClass,
+                riskChangeText,
+                scoreDeltaNum,
+                scoreDeltaStr,
+                processName: (entB || entA).process_name,
+                pid: (entB || entA).pid,
+            });
+        });
+
+        // Sort: Changed/New/Removed first, then by highest score
+        alignedEntities.sort((a, b) => {
+            const statusWeight = { changed: 4, new: 3, removed: 2, unchanged: 1 };
+            const swDiff = (statusWeight[b.status] || 0) - (statusWeight[a.status] || 0);
+            if (swDiff !== 0) return swDiff;
+            const maxScoreA = Math.max(a.entA ? a.entA.score : 0, a.entB ? a.entB.score : 0);
+            const maxScoreB = Math.max(b.entA ? b.entA.score : 0, b.entB ? b.entB.score : 0);
+            return maxScoreB - maxScoreA;
+        });
+
+        // Populate Summary Cards
+        const totalDelta = entitiesB.length - entitiesA.length;
+        document.getElementById('summary-total-val').textContent = `${entitiesA.length} vs ${entitiesB.length}`;
+        const totalDeltaEl = document.getElementById('summary-total-delta');
+        totalDeltaEl.textContent = (totalDelta >= 0 ? `+${totalDelta}` : `${totalDelta}`) + ' entities';
+        totalDeltaEl.className = 'val-delta ' + (totalDelta === 0 ? 'neutral' : (totalDelta > 0 ? 'negative' : 'positive'));
+
+        document.getElementById('summary-high-val').textContent = `${highA} vs ${highB}`;
+        const highDelta = highB - highA;
+        const highDeltaEl = document.getElementById('summary-high-delta');
+        highDeltaEl.textContent = `Δ ${highDelta >= 0 ? '+' : ''}${highDelta}`;
+        highDeltaEl.className = 'val-delta font-mono ' + (highDelta > 0 ? 'negative' : (highDelta < 0 ? 'positive' : 'neutral'));
+
+        document.getElementById('summary-med-val').textContent = `${medA} vs ${medB}`;
+        const medDelta = medB - medA;
+        const medDeltaEl = document.getElementById('summary-med-delta');
+        medDeltaEl.textContent = `Δ ${medDelta >= 0 ? '+' : ''}${medDelta}`;
+
+        document.getElementById('summary-low-val').textContent = `${lowA} vs ${lowB}`;
+        const lowDelta = lowB - lowA;
+        const lowDeltaEl = document.getElementById('summary-low-delta');
+        lowDeltaEl.textContent = `Δ ${lowDelta >= 0 ? '+' : ''}${lowDelta}`;
+
+        document.getElementById('summary-new-val').textContent = newCount;
+        document.getElementById('summary-removed-val').textContent = removedCount;
+
+        // Update Header Delta text
+        const diffHeader = document.getElementById('th-diff-delta');
+        if (diffHeader) {
+            diffHeader.textContent = `(Δ ${totalDelta >= 0 ? '+' : ''}${totalDelta} entities)`;
+        }
+
+        // Update Filter tab counts
+        document.getElementById('count-all').textContent = alignedEntities.length;
+        document.getElementById('count-changed').textContent = changedCount;
+        document.getElementById('count-new').textContent = newCount;
+        document.getElementById('count-removed').textContent = removedCount;
+        document.getElementById('count-unchanged').textContent = unchangedCount;
+    }
+
+    function renderTable() {
+        const tbody = document.getElementById('compare-tbody');
+        const emptyState = document.getElementById('compare-empty-state');
+        const badge = document.getElementById('visible-count-badge');
+        if (!tbody) return;
+
+        tbody.innerHTML = '';
+
+        const filtered = alignedEntities.filter(item => {
+            if (activeFilter === 'changed' && item.status !== 'changed') return false;
+            if (activeFilter === 'new' && item.status !== 'new') return false;
+            if (activeFilter === 'removed' && item.status !== 'removed') return false;
+            if (activeFilter === 'unchanged' && item.status !== 'unchanged') return false;
+
+            if (searchQuery) {
+                const q = searchQuery.toLowerCase();
+                const name = (item.processName || '').toLowerCase();
+                const pid = item.pid !== null && item.pid !== undefined ? String(item.pid) : '';
+                return name.includes(q) || pid.includes(q);
+            }
+            return true;
+        });
+
+        if (badge) badge.textContent = `${filtered.length} of ${alignedEntities.length} entities`;
+
+        if (filtered.length === 0) {
+            if (emptyState) emptyState.style.display = 'block';
+            return;
+        } else {
+            if (emptyState) emptyState.style.display = 'none';
+        }
+
+        filtered.forEach(item => {
+            const tr = document.createElement('tr');
+            tr.className = `compare-table-row status-${item.status}`;
+
+            const a = item.entA;
+            const b = item.entB;
+
+            // Render Scan A Cells
+            const cellSevA = a ? `<span class="badge badge-severity badge-${a.risk_level.toLowerCase()}">${escapeHtml(a.risk_level)}</span>` : '<span class="entity-placeholder">—</span>';
+            const cellScoreA = a ? `<span class="font-mono">${a.score.toFixed(2)}</span>` : '<span class="entity-placeholder">—</span>';
+            const cellNameA = a ? `<span class="font-bold">${escapeHtml(a.process_name)}</span>` : '<span class="entity-placeholder">—</span>';
+            const cellPidA = a ? `<span class="font-mono">${a.pid !== null ? a.pid : 'None'}</span>` : '<span class="entity-placeholder">—</span>';
+
+            // Render Diff Cell
+            let badgeHtml = '';
+            if (item.status === 'new') {
+                badgeHtml = '<span class="diff-badge new">🟢 NEW</span>';
+            } else if (item.status === 'removed') {
+                badgeHtml = '<span class="diff-badge removed">🔴 REMOVED</span>';
+            } else if (item.status === 'changed') {
+                badgeHtml = '<span class="diff-badge escalated">🟡 CHANGED</span>';
+            } else {
+                badgeHtml = '<span class="diff-badge unchanged">SAME</span>';
+            }
+
+            const diffCell = `
+                <td class="diff-cell ${item.diffCellClass}">
+                    <div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+                        ${badgeHtml}
+                        <div style="font-size: 0.75rem; font-weight: 600;">${item.riskChangeText}</div>
+                        <div style="font-size: 0.75rem;" class="font-mono">${item.scoreDeltaStr !== '0.00' ? `Score: ${item.scoreDeltaStr}` : 'Score: ='}</div>
+                    </div>
+                </td>
+            `;
+
+            // Render Scan B Cells
+            const cellSevB = b ? `<span class="badge badge-severity badge-${b.risk_level.toLowerCase()}">${escapeHtml(b.risk_level)}</span>` : '<span class="entity-placeholder">—</span>';
+            const cellScoreB = b ? `<span class="font-mono">${b.score.toFixed(2)}</span>` : '<span class="entity-placeholder">—</span>';
+            const cellNameB = b ? `<span class="font-bold">${escapeHtml(b.process_name)}</span>` : '<span class="entity-placeholder">—</span>';
+            const cellPidB = b ? `<span class="font-mono">${b.pid !== null ? b.pid : 'None'}</span>` : '<span class="entity-placeholder">—</span>';
+
+            tr.innerHTML = `
+                <td>${cellSevA}</td>
+                <td>${cellScoreA}</td>
+                <td>${cellNameA}</td>
+                <td>${cellPidA}</td>
+                ${diffCell}
+                <td>${cellSevB}</td>
+                <td>${cellScoreB}</td>
+                <td>${cellNameB}</td>
+                <td>${cellPidB}</td>
+            `;
+
+            tbody.appendChild(tr);
+        });
+    }
+
+    window.setDiffFilter = function(filter, btn) {
+        activeFilter = filter;
+        document.querySelectorAll('.filter-tabs .btn-filter').forEach(b => b.classList.remove('active'));
+        if (btn) btn.classList.add('active');
+        renderTable();
+    };
+
+    window.handleSearch = function(val) {
+        searchQuery = val.trim();
+        renderTable();
+    };
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    // Initialize on page load
+    if (currentScanA && currentScanB) {
+        loadAndDiffScans(currentScanA, currentScanB);
+    }
+})();
+</script>
+{% endblock %}

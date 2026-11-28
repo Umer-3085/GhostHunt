@@ -243,6 +243,34 @@ class TestDashboardViews(unittest.TestCase):
         self.assertIn("Proposed Baseline", html)
         self.assertIn('id="btn-accept-diff-baseline"', html)
 
+    def test_10_history_compare_view(self):
+        """GET /history/compare renders side-by-side comparison page with swap and diff controls (Issue #10)."""
+        # 1. Create two scans
+        sid1 = db.start_scan(db_path=self.db_path)
+        db.complete_scan(sid1, 5, 1, 12.0, db_path=self.db_path)
+
+        sid2 = db.start_scan(db_path=self.db_path)
+        db.complete_scan(sid2, 6, 2, 14.0, db_path=self.db_path)
+
+        # 2. Test GET /history/compare with query params
+        resp = self.client.get(f"/history/compare?scan_a={sid1}&scan_b={sid2}")
+        self.assertEqual(resp.status_code, 200)
+        html = resp.get_data(as_text=True)
+
+        self.assertIn("Scan Comparison:", html)
+        self.assertIn(f"#{sid1} vs #{sid2}", html)
+        self.assertIn("compare-grid", html)
+        self.assertIn("compare-table", html)
+        self.assertIn("btn-swap-scans", html)
+        self.assertIn("summary-total-val", html)
+        self.assertIn("th-diff", html)
+
+        # 3. Test default fallback with no query params picks recent completed scans
+        resp_default = self.client.get("/history/compare")
+        self.assertEqual(resp_default.status_code, 200)
+        html_default = resp_default.get_data(as_text=True)
+        self.assertIn("compare-table", html_default)
+
 
 if __name__ == "__main__":
     unittest.main()

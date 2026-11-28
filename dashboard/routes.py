@@ -77,6 +77,11 @@ def check_csrf_protection() -> None:
 # ===========================================================================
 # 1. REST API: Health & System Status (FR-6.6)
 # ===========================================================================
+@dashboard_bp.route("/favicon.ico", methods=["GET"])
+def favicon():
+    return "", 204
+
+
 @dashboard_bp.route("/api/health", methods=["GET"])
 @dashboard_bp.route("/api/status", methods=["GET"])
 def api_status():
@@ -1063,6 +1068,58 @@ def view_system_findings():
         threats=threats,
         diagnostics=diagnostics,
         baseline_meta=baseline_meta,
+    )
+
+
+@dashboard_bp.route("/history/compare", methods=["GET"])
+def view_history_compare():
+    """
+    Side-by-Side Historical Scan Comparison View (Issue #10).
+    Renders compare.html with query parameters scan_a and scan_b.
+    """
+    db_path = get_active_db_path()
+    raw_a = request.args.get("scan_a")
+    raw_b = request.args.get("scan_b")
+
+    scan_a_id: Optional[int] = None
+    scan_b_id: Optional[int] = None
+
+    if raw_a is not None:
+        try:
+            scan_a_id = int(raw_a)
+            if scan_a_id <= 0:
+                scan_a_id = None
+        except ValueError:
+            pass
+
+    if raw_b is not None:
+        try:
+            scan_b_id = int(raw_b)
+            if scan_b_id <= 0:
+                scan_b_id = None
+        except ValueError:
+            pass
+
+    recent_completed = db.get_recent_completed_scans(limit=30, db_path=db_path)
+    if scan_a_id is None and len(recent_completed) >= 2:
+        scan_a_id = recent_completed[1]["id"]
+        scan_b_id = recent_completed[0]["id"]
+    elif scan_a_id is None and len(recent_completed) == 1:
+        scan_a_id = recent_completed[0]["id"]
+        scan_b_id = recent_completed[0]["id"]
+
+    scan_a_info = db.get_scan_status(scan_a_id, db_path=db_path) if scan_a_id else None
+    scan_b_info = db.get_scan_status(scan_b_id, db_path=db_path) if scan_b_id else None
+    history = db.get_scan_history(limit=50, db_path=db_path)
+
+    return render_template(
+        "compare.html",
+        scan_a_id=scan_a_id,
+        scan_b_id=scan_b_id,
+        scan_a_info=scan_a_info,
+        scan_b_info=scan_b_info,
+        history=history,
+        recent_completed=recent_completed,
     )
 
 

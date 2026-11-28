@@ -223,7 +223,6 @@ function runCompare() {
     const [idA, idB] = compareSelection.slice().sort((a, b) => a - b); // older first
     window.location.href = `/history/compare?scan_a=${idA}&scan_b=${idB}`;
 }
-}
 
 function escH(text) {
     const d = document.createElement('div');

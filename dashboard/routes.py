@@ -77,6 +77,11 @@ def check_csrf_protection() -> None:
 # ===========================================================================
 # 1. REST API: Health & System Status (FR-6.6)
 # ===========================================================================
+@dashboard_bp.route("/favicon.ico", methods=["GET"])
+def favicon():
+    return "", 204
+
+
 @dashboard_bp.route("/api/health", methods=["GET"])
 @dashboard_bp.route("/api/status", methods=["GET"])
 def api_status():
